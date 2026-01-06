@@ -3,61 +3,59 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SpotyDa - Premium Music Experience</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script>
-      // Обеспечиваем наличие объекта process для предотвращения ошибок ReferenceError
-      window.process = window.process || { env: { API_KEY: "" } };
+      // Глобальный перехват ошибок для отладки "черного экрана"
+      window.onerror = function(msg, url, line) {
+        const root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = `<div style="padding: 20px; color: red; font-family: sans-serif;">
+            <h1 style="color: #1DB954">SpotyDa Error</h1>
+            <p>${msg}</p>
+            <small>${url} : ${line}</small>
+            <p style="color: white; margin-top: 20px;">Пожалуйста, проверьте настройки Netlify и API_KEY.</p>
+          </div>`;
+        }
+        return false;
+      };
+      window.process = { env: { API_KEY: "" } };
     </script>
     <style>
+        :root {
+            --spotify-green: #1DB954;
+            --bg-base: #000000;
+        }
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #000;
+            background-color: var(--bg-base);
             color: #fff;
             margin: 0;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
             text-rendering: optimizeLegibility;
+            padding-bottom: env(safe-area-inset-bottom);
         }
         * {
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
         }
         ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(0,0,0,0.1);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #282828;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3e3e3e;
+            display: none;
         }
         
-        @keyframes pageEnter {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
+        .safe-pb { padding-bottom: calc(env(safe-area-inset-bottom) + 5rem); }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         
-        .animate-page-enter {
-          animation: pageEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        @media (max-width: 768px) {
-            ::-webkit-scrollbar {
-                display: none;
-            }
-            .pb-safe {
-                padding-bottom: env(safe-area-inset-bottom);
-            }
-        }
+        .animate-fade { animation: fadeIn 0.3s ease-out; }
     </style>
 <script type="importmap">
 {
@@ -72,7 +70,9 @@
 </head>
 <body>
     <div id="root">
-        <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #000; color: #1DB954; font-weight: bold; font-family: sans-serif;">
+        <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; color: #1DB954; font-weight: bold; font-family: sans-serif;">
+            <div style="width: 40px; height: 40px; border: 3px solid #1DB954; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
             Loading SpotyDa...
         </div>
     </div>
