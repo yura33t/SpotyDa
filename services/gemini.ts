@@ -1,12 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Track } from "../types.ts";
+import { Track } from "../types";
 
 export const getGeminiAI = () => {
-  const apiKey = (window as any).process?.env?.API_KEY || "";
-  if (!apiKey) {
-    console.warn("API_KEY is missing. AI features will not work.");
-  }
+  const apiKey = process.env.API_KEY || "";
   return new GoogleGenAI({ apiKey });
 };
 
@@ -47,20 +44,20 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
     cache.set(cacheKey, data);
     return data;
   } catch (e) {
-    console.error("Search failed", e);
+    console.error("Search error:", e);
     return [];
   }
 };
 
 export const getRecommendations = async (): Promise<Track[]> => {
-  const cacheKey = 'recommendations_daily_v4';
+  const cacheKey = 'recs_v1';
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   try {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Trending global hits. Return JSON array: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
+      contents: `Trending music tracks. Return JSON: {id, title, artist, album, coverUrl, duration, audioUrl}.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -87,7 +84,7 @@ export const getRecommendations = async (): Promise<Track[]> => {
     cache.set(cacheKey, data);
     return data;
   } catch (e) {
-    console.error("Recs failed", e);
+    console.error("Recommendations error:", e);
     return [];
   }
 };
