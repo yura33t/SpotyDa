@@ -14,15 +14,15 @@
         window.onerror = function(msg, url, line, col, error) {
             const root = document.getElementById('root');
             if (root) {
-                root.innerHTML = '<div style="padding: 40px 20px; color: #ff4444; background: #000; font-family: sans-serif; text-align: center;">' +
-                    '<h1 style="font-size: 20px; margin-bottom: 10px;">Ошибка запуска SpotyDa</h1>' +
-                    '<p style="font-size: 14px; opacity: 0.8;">' + msg + '</p>' +
-                    '<button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #1DB954; color: white; border: none; border-radius: 20px; font-weight: bold;">Обновить страницу</button>' +
+                root.innerHTML = '<div style="padding: 40px 20px; color: #ff4444; background: #000; font-family: sans-serif; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">' +
+                    '<h1 style="font-size: 20px; margin-bottom: 10px; font-weight: 900;">Ошибка SpotyDa</h1>' +
+                    '<p style="font-size: 14px; opacity: 0.8; margin-bottom: 20px;">' + msg + '</p>' +
+                    '<button onclick="location.reload()" style="align-self: center; padding: 12px 24px; background: #1DB954; color: white; border: none; border-radius: 500px; font-weight: bold; cursor: pointer;">Перезагрузить</button>' +
                     '</div>';
             }
             return false;
         };
-        // Предотвращаем ошибку "process is not defined" максимально надежно
+        // Инициализация process.env до загрузки любых модулей
         window.process = { env: { API_KEY: "" } };
     </script>
     <style>
@@ -32,14 +32,13 @@
             color: #fff;
             margin: 0;
             padding: 0;
-            overflow-x: hidden;
+            overflow: hidden;
             -webkit-font-smoothing: antialiased;
         }
-        #root { min-height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+        #root { height: 100vh; width: 100vw; }
         ::-webkit-scrollbar { display: none; }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         
-        /* Индикатор первичной загрузки */
         .initial-loader {
             display: flex;
             flex-direction: column;
@@ -75,7 +74,7 @@
     <div id="root">
         <div class="initial-loader">
             <div class="spinner"></div>
-            <p style="margin-top: 20px; font-weight: bold; color: #1DB954; letter-spacing: -0.5px;">SpotyDa</p>
+            <p style="margin-top: 20px; font-weight: 900; color: #1DB954; letter-spacing: -1px; font-size: 24px;">SpotyDa</p>
         </div>
     </div>
     <script type="module" src="./index.tsx"></script>

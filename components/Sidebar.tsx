@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AppSection } from '../types';
+import { AppSection } from '../types.ts';
 
 interface SidebarProps {
   currentSection: AppSection;
@@ -15,12 +15,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, setCurrentSection }) 
   ];
 
   return (
-    <div className="hidden md:flex w-64 bg-black h-full flex-col p-4 space-y-6 shrink-0">
-      <div className="flex items-center space-x-2 px-2 py-4">
-        <div className="w-8 h-8 bg-[#1DB954] rounded-full flex items-center justify-center">
-          <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.494 17.3c-.216.353-.674.464-1.026.248-2.865-1.75-6.471-2.147-10.718-1.18-.403.093-.81-.158-.903-.561-.093-.403.158-.81.561-.903 4.654-1.064 8.636-.615 11.83 1.334.352.216.463.674.248 1.026zm1.467-3.264c-.272.44-.848.578-1.288.306-3.279-2.015-8.279-2.599-12.158-1.42-.495.15-1.02-.132-1.17-.627-.15-.495.132-1.02.627-1.17 4.417-1.34 9.932-.693 13.685 1.61.44.272.578.848.306 1.288zm.126-3.398C15.3 8.356 9.074 8.148 5.503 9.232c-.567.171-1.17-.151-1.342-.718-.171-.567.151-1.17.718-1.342 4.103-1.246 11-1.006 15.352 1.577.51.303.676.963.373 1.474-.303.51-.963.676-1.474.373z"/></svg>
+    <div className="hidden md:flex w-64 bg-black h-full flex-col p-4 space-y-6 shrink-0 border-r border-white/5">
+      <div className="flex items-center space-x-3 px-2 py-4">
+        <div className="w-9 h-9 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg shadow-[#1DB954]/20">
+          <svg className="w-6 h-6 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.494 17.3c-.216.353-.674.464-1.026.248-2.865-1.75-6.471-2.147-10.718-1.18-.403.093-.81-.158-.903-.561-.093-.403.158-.81.561-.903 4.654-1.064 8.636-.615 11.83 1.334.352.216.463.674.248 1.026zm1.467-3.264c-.272.44-.848.578-1.288.306-3.279-2.015-8.279-2.599-12.158-1.42-.495.15-1.02-.132-1.17-.627-.15-.495.132-1.02.627-1.17 4.417-1.34 9.932-.693 13.685 1.61.44.272.578.848.306 1.288zm.126-3.398C15.3 8.356 9.074 8.148 5.503 9.232c-.567.171-1.17-.151-1.342-.718-.171-.567.151-1.17.718-1.342 4.103-1.246 11-1.006 15.352 1.577.51.303.676.963.373 1.474-.303.51-.963.676-1.474.373z"/></svg>
         </div>
-        <span className="text-2xl font-bold tracking-tight">SpotyDa</span>
+        <span className="text-2xl font-black tracking-tighter">SpotyDa</span>
       </div>
 
       <nav className="flex flex-col space-y-1">
@@ -28,20 +28,23 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, setCurrentSection }) 
           <button
             key={item.id}
             onClick={() => setCurrentSection(item.id)}
-            className={`flex items-center space-x-4 px-3 py-3 rounded-md transition-colors ${
-              currentSection === item.id ? 'bg-[#282828] text-white' : 'text-gray-400 hover:text-white'
+            className={`flex items-center space-x-4 px-3 py-3 rounded-lg transition-all ${
+              currentSection === item.id ? 'bg-[#282828] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
             }`}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
             </svg>
-            <span className="font-semibold">{item.label}</span>
+            <span className="font-bold">{item.label}</span>
           </button>
         ))}
       </nav>
 
       <div className="flex-1 border-t border-white/10 pt-6">
-        <p className="px-3 text-xs text-gray-500">Your library is currently empty. Start following artists or liked songs.</p>
+        <div className="bg-[#121212] p-4 rounded-lg">
+            <h4 className="font-bold text-sm mb-2">Build your library</h4>
+            <p className="text-xs text-gray-400 leading-relaxed">It's easy, we'll help you. Like songs to see them here.</p>
+        </div>
       </div>
     </div>
   );
