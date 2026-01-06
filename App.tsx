@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Sidebar from './components/Sidebar';
-import MainContent from './components/MainContent';
-import Player from './components/Player';
-import { AppSection, Track } from './types';
-import { getRecommendations, searchMusic } from './services/gemini';
+import Sidebar from './components/Sidebar.tsx';
+import MainContent from './components/MainContent.tsx';
+import Player from './components/Player.tsx';
+import { AppSection, Track } from './types.ts';
+import { getRecommendations, searchMusic } from './services/gemini.ts';
 
 const App: React.FC = () => {
   const [currentSection, setCurrentSection] = useState<AppSection>(AppSection.HOME);
@@ -16,17 +16,20 @@ const App: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Оптимизация начальной загрузки: сначала берем из кэша, потом обновляем из API
   useEffect(() => {
     const savedRecs = localStorage.getItem('spotyda_recs');
     if (savedRecs) setRecommendations(JSON.parse(savedRecs));
 
     const fetchInitialData = async () => {
       setIsLoading(true);
-      const recs = await getRecommendations();
-      if (recs.length > 0) {
-        setRecommendations(recs);
-        localStorage.setItem('spotyda_recs', JSON.stringify(recs));
+      try {
+        const recs = await getRecommendations();
+        if (recs && recs.length > 0) {
+          setRecommendations(recs);
+          localStorage.setItem('spotyda_recs', JSON.stringify(recs));
+        }
+      } catch (err) {
+        console.error("Initial load failed", err);
       }
       setIsLoading(false);
     };
@@ -43,8 +46,12 @@ const App: React.FC = () => {
     if (!query.trim()) return;
     setIsLoading(true);
     setCurrentSection(AppSection.SEARCH);
-    const results = await searchMusic(query);
-    setSearchResults(results);
+    try {
+      const results = await searchMusic(query);
+      setSearchResults(results || []);
+    } catch (err) {
+      console.error("Search error", err);
+    }
     setIsLoading(false);
   }, []);
 

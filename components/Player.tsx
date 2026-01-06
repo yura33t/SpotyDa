@@ -17,13 +17,13 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Используем демонстрационный аудиофайл для проверки плеера
-  const audioSource = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+  // Используем аудио-ссылку из трека, если она есть, иначе - демо-файл
+  const audioSource = currentTrack?.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
   useEffect(() => {
     if (audioRef.current && currentTrack) {
       if (isPlaying) {
-        audioRef.current.play().catch(e => console.warn("Playback blocked"));
+        audioRef.current.play().catch(e => console.warn("Playback blocked or link invalid"));
       } else {
         audioRef.current.pause();
       }
@@ -81,7 +81,7 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
           src={currentTrack.coverUrl} 
           alt={currentTrack.title} 
           className="w-12 h-12 md:w-14 md:h-14 rounded shadow-lg shrink-0 object-cover" 
-          onError={(e) => e.currentTarget.src = 'https://picsum.photos/100/100'}
+          onError={(e) => e.currentTarget.src = `https://picsum.photos/seed/${currentTrack.id}/100/100`}
         />
         <div className="min-w-0">
           <h4 className="text-white text-xs md:text-sm font-bold truncate leading-tight">{currentTrack.title}</h4>
