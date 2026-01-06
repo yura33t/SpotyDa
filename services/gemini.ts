@@ -2,10 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Track } from "../types.ts";
 
-export const getGeminiAI = () => {
-  const apiKey = (window as any).process?.env?.API_KEY || "";
-  return new GoogleGenAI({ apiKey });
-};
+// Прямой доступ к ключу согласно правилам
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const cache = new Map<string, any>();
 
@@ -14,10 +12,13 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   try {
-    const ai = getGeminiAI();
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Act as a music API. Find 8 real tracks for "${query}". Return ONLY a JSON array of objects: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
+      contents: `Search for real music tracks matching: "${query}". 
+      Return exactly 10 tracks as a JSON array. 
+      Important: audioUrl should be a direct link to a high-quality preview or a valid stream. 
+      Use https://picsum.photos/seed/{id}/500/500 for coverUrl.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -39,25 +40,24 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
       },
     });
 
-    const text = response.text;
-    const data = text ? JSON.parse(text) : [];
+    const data = JSON.parse(response.text || "[]");
     cache.set(cacheKey, data);
     return data;
   } catch (e) {
-    console.error("Search error:", e);
+    console.error("Search failed:", e);
     return [];
   }
 };
 
 export const getRecommendations = async (): Promise<Track[]> => {
-  const cacheKey = 'recs_v1';
+  const cacheKey = 'recs_v2';
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   try {
-    const ai = getGeminiAI();
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Trending music tracks. Return JSON array of tracks with properties: id, title, artist, album, coverUrl, duration, audioUrl.`,
+      contents: "Generate a list of 12 trending global hits. Return as JSON array with id, title, artist, album, coverUrl (picsum), duration, and audioUrl.",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -79,12 +79,11 @@ export const getRecommendations = async (): Promise<Track[]> => {
       },
     });
 
-    const text = response.text;
-    const data = text ? JSON.parse(text) : [];
+    const data = JSON.parse(response.text || "[]");
     cache.set(cacheKey, data);
     return data;
   } catch (e) {
-    console.error("Recommendations error:", e);
+    console.error("Recommendations failed:", e);
     return [];
   }
 };
