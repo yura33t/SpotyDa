@@ -24,9 +24,7 @@
 </script>
 
     <script>
-        // Инициализация глобального окружения для SDK
-        window.process = { env: { API_KEY: "" } };
-        
+        // Global error handler
         window.onerror = function(msg, url, line, col, error) {
             console.error("Critical Error:", msg, error);
             const root = document.getElementById('root');
