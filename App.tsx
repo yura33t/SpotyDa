@@ -1,12 +1,16 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainContent from './components/MainContent.tsx';
 import Player from './components/Player.tsx';
 import { AppSection, Track } from './types.ts';
 import { getRecommendations, searchMusic } from './services/gemini.ts';
 
-const App: React.FC = () => {
+interface AppProps {
+  onReady?: () => void;
+}
+
+const App: React.FC<AppProps> = ({ onReady }) => {
   const [currentSection, setCurrentSection] = useState<AppSection>(AppSection.HOME);
   const [recommendations, setRecommendations] = useState<Track[]>([]);
   const [searchResults, setSearchResults] = useState<Track[]>([]);
@@ -15,6 +19,18 @@ const App: React.FC = () => {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const hasCalledReady = useRef(false);
+
+  // Call onReady after initial render
+  useEffect(() => {
+    if (!hasCalledReady.current) {
+      hasCalledReady.current = true;
+      // Small delay to ensure DOM is painted
+      requestAnimationFrame(() => {
+        onReady?.();
+      });
+    }
+  }, [onReady]);
 
   useEffect(() => {
     try {

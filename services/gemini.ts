@@ -3,7 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Track } from "../types.ts";
 
 export const getGeminiAI = () => {
-  const apiKey = (window as any).process?.env?.API_KEY || "";
+  // API key is injected by Vite at build time via process.env.API_KEY
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || "";
   return new GoogleGenAI({ apiKey });
 };
 
@@ -16,7 +17,7 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
   try {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `Act as a music API. Find 8 real tracks for "${query}". Return ONLY a JSON array of objects: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
       config: {
         responseMimeType: "application/json",
@@ -56,7 +57,7 @@ export const getRecommendations = async (): Promise<Track[]> => {
   try {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `Trending music tracks. Return JSON array of tracks with properties: id, title, artist, album, coverUrl, duration, audioUrl.`,
       config: {
         responseMimeType: "application/json",
