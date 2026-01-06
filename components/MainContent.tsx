@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppSection, Track } from '../types';
-import TrackCard from './TrackCard';
+import { AppSection, Track } from '../types.ts';
+import TrackCard from './TrackCard.tsx';
 
 interface MainContentProps {
   currentSection: AppSection;
@@ -76,7 +76,7 @@ const MainContent: React.FC<MainContentProps> = ({
                   onClick={() => onPlayTrack(track)}
                   className="flex items-center bg-white/5 rounded-md overflow-hidden hover:bg-white/10 transition-all cursor-pointer group border border-white/5 active:scale-95"
                 >
-                  <img src={track.coverUrl} className="w-12 h-12 md:w-16 md:h-16 shrink-0 object-cover" />
+                  <img src={track.coverUrl} className="w-12 h-12 md:w-16 md:h-16 shrink-0 object-cover" alt={track.title} />
                   <span className="flex-1 px-3 text-[11px] font-bold truncate">{track.title}</span>
                 </div>
               ))}

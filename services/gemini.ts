@@ -1,9 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Track } from "../types";
+import { Track } from "../types.ts";
 
 export const getGeminiAI = () => {
-  const apiKey = process.env.API_KEY || "";
+  const apiKey = (window as any).process?.env?.API_KEY || "";
   return new GoogleGenAI({ apiKey });
 };
 
@@ -57,7 +57,7 @@ export const getRecommendations = async (): Promise<Track[]> => {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Trending music tracks. Return JSON: {id, title, artist, album, coverUrl, duration, audioUrl}.`,
+      contents: `Trending music tracks. Return JSON array of tracks with properties: id, title, artist, album, coverUrl, duration, audioUrl.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
