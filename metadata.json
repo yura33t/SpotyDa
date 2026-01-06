@@ -1,0 +1,7 @@
+{
+  "name": "SpotyDa",
+  "description": "A world-class music discovery and streaming experience powered by Gemini. Features intelligent search, personalized recommendations, and a cutting-edge real-time voice assistant.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
