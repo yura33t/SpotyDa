@@ -3,15 +3,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Track } from "../types.ts";
 
 export const getGeminiAI = () => {
-  const apiKey = process.env.API_KEY || "";
+  const apiKey = (window as any).process?.env?.API_KEY || "";
+  if (!apiKey) {
+    console.warn("API_KEY is missing. AI features will not work.");
+  }
   return new GoogleGenAI({ apiKey });
 };
 
 const cache = new Map<string, any>();
 
-/**
- * Быстрый поиск музыки с использованием кэширования и оптимизированного промпта.
- */
 export const searchMusic = async (query: string): Promise<Track[]> => {
   const cacheKey = `search_${query.trim().toLowerCase()}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
@@ -20,7 +20,7 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Act as a music API. Find 8 real tracks for "${query}". Return ONLY a JSON array of objects: {id, title, artist, album, coverUrl, duration, audioUrl}. For coverUrl always use https://picsum.photos/seed/{id}/400/400.`,
+      contents: `Act as a music API. Find 8 real tracks for "${query}". Return ONLY a JSON array of objects: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -52,18 +52,15 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
   }
 };
 
-/**
- * Рекомендации с гарантированными фото и высокой скоростью ответа.
- */
 export const getRecommendations = async (): Promise<Track[]> => {
-  const cacheKey = 'recommendations_daily_v3';
+  const cacheKey = 'recommendations_daily_v4';
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   try {
     const ai = getGeminiAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Trending global tracks. Return JSON array: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
+      contents: `Trending global hits. Return JSON array: {id, title, artist, album, coverUrl, duration, audioUrl}. Use https://picsum.photos/seed/{id}/400/400 for coverUrl.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
