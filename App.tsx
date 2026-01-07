@@ -6,14 +6,12 @@ import Player from './components/Player.tsx';
 import { AppSection, Track } from './types.ts';
 import { getRecommendations, searchMusic } from './services/musicApi.ts';
 
-// Безопасное хранилище (LocalStorage Wrapper)
 const storage = {
   get: (key: string) => {
     try {
       const val = localStorage.getItem(key);
       return val ? JSON.parse(val) : null;
     } catch (e) {
-      console.warn("Storage access restricted (Incognito mode).");
       return null;
     }
   },
@@ -26,30 +24,32 @@ const storage = {
 
 const App: React.FC = () => {
   const [currentSection, setCurrentSection] = useState<AppSection>(AppSection.HOME);
-  const [recommendations, setRecommendations] = useState<Track[]>([]);
+  const [recommendations, setRecommendations] = useState<Track[]>(storage.get('spotyda_recs') || []);
   const [searchResults, setSearchResults] = useState<Track[]>([]);
-  const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
-  const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
+  const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>(storage.get('spotyda_recent') || []);
+  const [libraryTracks, setLibraryTracks] = useState<Track[]>(storage.get('spotyda_library') || []);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Первичная загрузка
   useEffect(() => {
-    const cachedRecent = storage.get('spotyda_recent');
-    const cachedLib = storage.get('spotyda_library');
-    if (cachedRecent) setRecentlyPlayed(cachedRecent);
-    if (cachedLib) setLibraryTracks(cachedLib);
+    // Скрываем загрузчик сразу при монтировании, так как у нас есть кэшированные рекомендации
+    const loader = document.getElementById('loader');
+    if (loader) {
+      loader.style.opacity = '0';
+      setTimeout(() => loader.remove(), 300);
+    }
 
     const initData = async () => {
-      setIsLoading(true);
+      // Даже если данные есть в кэше, пробуем обновить их незаметно
       try {
         const freshRecs = await getRecommendations();
-        if (freshRecs.length > 0) setRecommendations(freshRecs);
+        if (freshRecs && freshRecs.length > 0) {
+          setRecommendations(freshRecs);
+          storage.set('spotyda_recs', freshRecs);
+        }
       } catch (err) {
-        console.error("Critical: API Unavailable", err);
-      } finally {
-        setIsLoading(false);
+        console.warn("Could not refresh data, using offline cache.");
       }
     };
     initData();
@@ -59,9 +59,14 @@ const App: React.FC = () => {
     if (!query.trim()) return;
     setIsLoading(true);
     setCurrentSection(AppSection.SEARCH);
-    const results = await searchMusic(query);
-    setSearchResults(results);
-    setIsLoading(false);
+    try {
+      const results = await searchMusic(query);
+      setSearchResults(results);
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const handlePlayTrack = useCallback((track: Track) => {
@@ -70,7 +75,7 @@ const App: React.FC = () => {
     
     setRecentlyPlayed(prev => {
       const filtered = prev.filter(t => t.id !== track.id);
-      const updated = [track, ...filtered].slice(0, 12);
+      const updated = [track, ...filtered].slice(0, 15);
       storage.set('spotyda_recent', updated);
       return updated;
     });
@@ -84,17 +89,6 @@ const App: React.FC = () => {
         : [track, ...prev];
       storage.set('spotyda_library', updated);
       return updated;
-    });
-  }, []);
-
-  const handleMoveTrack = useCallback((fromIndex: number, toIndex: number) => {
-    setLibraryTracks(prev => {
-      if (toIndex < 0 || toIndex >= prev.length) return prev;
-      const newTracks = [...prev];
-      const [movedItem] = newTracks.splice(fromIndex, 1);
-      newTracks.splice(toIndex, 0, movedItem);
-      storage.set('spotyda_library', newTracks);
-      return newTracks;
     });
   }, []);
 
@@ -118,7 +112,6 @@ const App: React.FC = () => {
             toggleLibrary={toggleLibrary}
             onSearch={handleSearch}
             onPlayTrack={handlePlayTrack}
-            onMoveTrack={handleMoveTrack}
             isLoading={isLoading}
             currentTrackId={currentTrack?.id}
           />
@@ -142,7 +135,7 @@ const App: React.FC = () => {
           <button 
             key={item.id}
             onClick={() => setCurrentSection(item.id)} 
-            className={`flex flex-col items-center justify-center transition-all ${currentSection === item.id ? 'text-white' : 'text-gray-500'}`}
+            className={`flex flex-col items-center justify-center transition-all ${currentSection === item.id ? 'text-white scale-105' : 'text-gray-500'}`}
           >
             <svg className="w-6 h-6 mb-1" fill={currentSection === item.id ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />

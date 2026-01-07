@@ -12,7 +12,6 @@ interface MainContentProps {
   onSearch: (query: string) => void;
   onPlayTrack: (track: Track) => void;
   toggleLibrary: (track: Track) => void;
-  onMoveTrack?: (from: number, to: number) => void;
   isLoading: boolean;
   currentTrackId?: string;
   setCurrentSection: (section: AppSection) => void;
@@ -27,7 +26,6 @@ const MainContent: React.FC<MainContentProps> = ({
   onSearch, 
   onPlayTrack,
   toggleLibrary,
-  onMoveTrack,
   isLoading,
   currentTrackId,
   setCurrentSection
@@ -46,9 +44,10 @@ const MainContent: React.FC<MainContentProps> = ({
   useEffect(() => {
     if (currentSection === AppSection.SEARCH && searchInput.trim().length > 0) {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+      // Ускоренный дебаунс для быстрого отклика
       debounceTimer.current = window.setTimeout(() => {
         onSearch(searchInput);
-      }, 500);
+      }, 300);
     }
     return () => {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
