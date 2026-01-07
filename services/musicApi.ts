@@ -2,46 +2,79 @@
 import { Track } from "../types.ts";
 
 /**
- * Audius API - Децентрализованный музыкальный сервис.
- * Позволяет стримить ПОЛНЫЕ треки без ограничений (в отличие от iTunes/SoundCloud).
+ * Audius API - Decentralized music service.
+ * Optimized for maximum compatibility and performance across all devices.
  */
 
-let discoveryNode: string = "https://discoveryprovider.audius.co";
+const FALLBACK_NODES = [
+  "https://discoveryprovider.audius.co",
+  "https://audius-discovery-1.cultur3.bet",
+  "https://discovery-us-01.audius.openplayer.org",
+  "https://audius-metadata-5.figment.io",
+  "https://discovery-au-01.audius.openplayer.org"
+];
 
-// Динамический поиск живого узла для максимальной скорости
-const findHealthyNode = async () => {
-  try {
-    const response = await fetch("https://api.audius.co");
-    const data = await response.json();
-    if (data.data && data.data.length > 0) {
-      discoveryNode = data.data[0];
+let discoveryNode: string = FALLBACK_NODES[0];
+let isNodeSelected = false;
+
+// Fast health check to find a responsive node
+const findHealthyNode = async (): Promise<string> => {
+  if (isNodeSelected) return discoveryNode;
+
+  const checkNode = async (node: string): Promise<string | null> => {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${node}/v1/health_check`, { signal: controller.signal });
+      clearTimeout(id);
+      if (response.ok) return node;
+    } catch (e) {
+      return null;
     }
-  } catch (e) {
-    console.error("Failed to find Audius node, using default", e);
+    return null;
+  };
+
+  // Try nodes in parallel for speed
+  const results = await Promise.all(FALLBACK_NODES.map(node => checkNode(node)));
+  const healthyNode = results.find(res => res !== null);
+  
+  if (healthyNode) {
+    discoveryNode = healthyNode;
+    isNodeSelected = true;
+    console.log("SpotyDa connected to:", discoveryNode);
   }
+  
+  return discoveryNode;
 };
 
-// Запускаем поиск узла сразу
-findHealthyNode();
+// Ensure HTTPS to prevent Mixed Content errors on mobile/secure contexts
+const ensureHttps = (url: string) => url?.replace(/^http:/, 'https:');
+
+const formatSeconds = (totalSeconds: number): string => {
+  if (!totalSeconds) return "0:00";
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 export const searchMusic = async (query: string): Promise<Track[]> => {
   if (!query.trim()) return [];
   
   try {
-    const url = `${discoveryNode}/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=SPOTYDA_APP`;
+    const node = await findHealthyNode();
+    const url = `${node}/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=SPOTYDA_APP`;
     const response = await fetch(url);
-    if (!response.ok) throw new Error("Audius search failed");
+    if (!response.ok) throw new Error("Search request failed");
     
     const { data } = await response.json();
     
     return (data || []).map((item: any) => ({
-      id: item.id,
+      id: String(item.id),
       title: item.title,
       artist: item.user?.name || "Unknown Artist",
       album: item.genre || "Audius Track",
-      coverUrl: item.artwork?.["480x480"] || item.artwork?.["150x150"] || `https://api.dicebear.com/7.x/initials/svg?seed=${item.title}`,
-      // Прямая ссылка на ПОЛНЫЙ аудиопоток
-      audioUrl: `${discoveryNode}/v1/tracks/${item.id}/stream?app_name=SPOTYDA_APP`,
+      coverUrl: ensureHttps(item.artwork?.["480x480"] || item.artwork?.["150x150"] || `https://api.dicebear.com/7.x/initials/svg?seed=${item.title}`),
+      audioUrl: ensureHttps(`${node}/v1/tracks/${item.id}/stream?app_name=SPOTYDA_APP`),
       duration: formatSeconds(item.duration || 0)
     }));
   } catch (e) {
@@ -52,29 +85,24 @@ export const searchMusic = async (query: string): Promise<Track[]> => {
 
 export const getRecommendations = async (): Promise<Track[]> => {
   try {
-    // Получаем трендовые треки недели
-    const url = `${discoveryNode}/v1/tracks/trending?app_name=SPOTYDA_APP`;
+    const node = await findHealthyNode();
+    const url = `${node}/v1/tracks/trending?app_name=SPOTYDA_APP`;
     const response = await fetch(url);
+    if (!response.ok) throw new Error("Trending request failed");
+    
     const { data } = await response.json();
 
     return (data || []).slice(0, 20).map((item: any) => ({
-      id: item.id,
+      id: String(item.id),
       title: item.title,
-      artist: item.user?.name,
+      artist: item.user?.name || "Unknown Artist",
       album: item.genre || "Trending",
-      coverUrl: item.artwork?.["480x480"] || item.artwork?.["150x150"],
-      audioUrl: `${discoveryNode}/v1/tracks/${item.id}/stream?app_name=SPOTYDA_APP`,
+      coverUrl: ensureHttps(item.artwork?.["480x480"] || item.artwork?.["150x150"] || `https://api.dicebear.com/7.x/initials/svg?seed=${item.title}`),
+      audioUrl: ensureHttps(`${node}/v1/tracks/${item.id}/stream?app_name=SPOTYDA_APP`),
       duration: formatSeconds(item.duration || 0)
     }));
   } catch (e) {
     console.error("Audius Trending error:", e);
     return [];
   }
-};
-
-const formatSeconds = (totalSeconds: number): string => {
-  if (!totalSeconds) return "0:00";
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = Math.floor(totalSeconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 };

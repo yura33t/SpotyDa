@@ -23,7 +23,8 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
     if (audio && currentTrack) {
       if (isPlaying) {
         audio.play().catch(error => {
-          console.warn("Playback prevented:", error);
+          // Мобильные браузеры часто блокируют первый запуск (Autoplay policy)
+          console.warn("Playback blocked by browser policy. Interaction required.");
           setIsPlaying(false);
         });
       } else {
