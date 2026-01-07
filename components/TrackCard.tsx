@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Track } from '../types.ts';
 
@@ -11,6 +10,7 @@ interface TrackCardProps {
   isInLibrary?: boolean;
   isActive?: boolean;
   viewMode?: 'grid' | 'list';
+  accentColor?: string;
 }
 
 const TrackCard: React.FC<TrackCardProps> = React.memo(({ 
@@ -21,11 +21,24 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
   onMove,
   isInLibrary, 
   isActive, 
-  viewMode = 'grid' 
+  viewMode = 'grid',
+  accentColor = '#1DB954'
 }) => {
+  
   const handleActionClick = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation();
     action();
+  };
+
+  const handleLikeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleLibrary?.();
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const target = e.target as HTMLImageElement;
+    target.onerror = null; 
+    target.src = `https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=480&h=480&fit=crop&auto=format&q=80`;
   };
 
   if (viewMode === 'list') {
@@ -38,15 +51,20 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
           {index !== undefined ? index + 1 : ''}
         </div>
         <div className="relative w-10 h-10 mr-4 shrink-0">
-          <img src={track.coverUrl} className="w-full h-full object-cover rounded shadow" alt={track.title} />
+          <img 
+            src={track.coverUrl} 
+            className="w-full h-full object-cover rounded shadow" 
+            alt={track.title} 
+            onError={handleImageError}
+          />
           {isActive && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded">
-               <div className="w-2 h-2 bg-[#1DB954] rounded-full animate-pulse"></div>
+               <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: accentColor }}></div>
             </div>
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-sm font-bold truncate ${isActive ? 'text-[#1DB954]' : 'text-white'}`}>{track.title}</div>
+          <div className={`text-sm font-bold truncate ${isActive ? 'text-current' : 'text-white'}`} style={{ color: isActive ? accentColor : undefined }}>{track.title}</div>
           <div className="text-xs text-gray-400 truncate">{track.artist}</div>
         </div>
         <div className="hidden md:block text-xs text-gray-500 px-4 truncate max-w-[150px]">
@@ -73,8 +91,9 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
           )}
           <div className="text-xs text-gray-500 w-10 text-right">{track.duration}</div>
           <button 
-            onClick={(e) => handleActionClick(e, onToggleLibrary!)}
-            className={`p-2 transition-colors ${isInLibrary ? 'text-[#1DB954]' : 'text-gray-500 hover:text-white'}`}
+            onClick={handleLikeClick}
+            className={`p-2 transition-colors ${isInLibrary ? 'text-current' : 'text-gray-500 hover:text-white'}`}
+            style={{ color: isInLibrary ? accentColor : undefined }}
           >
             <svg className="w-5 h-5" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -88,9 +107,10 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
   return (
     <div 
       onClick={onPlay}
-      className={`bg-[#181818] p-4 rounded-lg hover:bg-[#282828] transition-all duration-300 cursor-pointer group shadow-xl relative will-change-transform ${isActive ? 'ring-2 ring-[#1DB954]' : ''}`}
+      className={`bg-[#181818] p-4 rounded-lg hover:bg-[#282828] transition-all duration-300 cursor-pointer group shadow-xl relative will-change-transform ${isActive ? 'ring-2' : ''}`}
+      style={{ '--tw-ring-color': accentColor } as any}
     >
-      <div className="relative mb-4 aspect-square overflow-hidden rounded-md shadow-2xl">
+      <div className="relative mb-4 aspect-square overflow-hidden rounded-md shadow-2xl bg-[#282828]">
         {index !== undefined && (
           <div className="absolute top-2 left-2 z-10 w-6 h-6 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-[10px] font-black text-white border border-white/10">
             {index + 1}
@@ -100,6 +120,7 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
           src={track.coverUrl} 
           alt={track.title} 
           loading="lazy"
+          onError={handleImageError}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
         />
         
@@ -109,31 +130,30 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
 
         <button 
           onClick={handleLikeClick}
-          className={`absolute top-2 right-2 p-2 rounded-full transition-all duration-200 md:opacity-0 group-hover:opacity-100 ${isInLibrary ? 'text-[#1DB954] opacity-100 bg-black/40' : 'text-white/70 hover:text-white bg-black/40'}`}
+          className={`absolute top-2 right-2 p-2 rounded-full transition-all duration-200 md:opacity-0 group-hover:opacity-100 ${isInLibrary ? 'opacity-100 bg-black/40' : 'text-white/70 hover:text-white bg-black/40'}`}
+          style={{ color: isInLibrary ? accentColor : undefined }}
         >
           <svg className="w-5 h-5" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
           </svg>
         </button>
 
-        <div className="hidden md:flex absolute right-2 bottom-2 w-12 h-12 bg-[#1DB954] rounded-full items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 shadow-2xl">
+        <div 
+          className="hidden md:flex absolute right-2 bottom-2 w-12 h-12 rounded-full items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 shadow-2xl"
+          style={{ backgroundColor: accentColor }}
+        >
           <svg className="w-6 h-6 text-black ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
         </div>
       </div>
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className={`font-bold truncate text-base mb-1 ${isActive ? 'text-[#1DB954]' : 'text-white'}`}>{track.title}</h3>
+          <h3 className={`font-bold truncate text-base mb-1 ${isActive ? 'text-current' : 'text-white'}`} style={{ color: isActive ? accentColor : undefined }}>{track.title}</h3>
           <p className="text-[#b3b3b3] text-sm font-semibold truncate">{track.artist}</p>
         </div>
         <span className="text-[10px] text-gray-500 font-medium mt-1.5 md:hidden">{track.duration}</span>
       </div>
     </div>
   );
-
-  function handleLikeClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    onToggleLibrary?.();
-  }
 });
 
 TrackCard.displayName = 'TrackCard';

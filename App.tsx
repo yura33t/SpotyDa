@@ -1,24 +1,24 @@
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainContent from './components/MainContent.tsx';
 import Player from './components/Player.tsx';
+import BottomNav from './components/BottomNav.tsx';
+import SettingsModal from './components/SettingsModal.tsx';
 import { AppSection, Track } from './types.ts';
 import { getRecommendations, searchMusic } from './services/musicApi.ts';
+import { getSmartSearchQuery, analyzeWallpaper, enhanceWallpaper, WallpaperAnalysis } from './services/gemini.ts';
 
 const storage = {
   get: (key: string) => {
     try {
       const val = localStorage.getItem(key);
       return val ? JSON.parse(val) : null;
-    } catch (e) {
-      return null;
-    }
+    } catch { return null; }
   },
   set: (key: string, value: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {}
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {
+      console.error("Storage limit reached", e);
+    }
   }
 };
 
@@ -29,30 +29,42 @@ const App: React.FC = () => {
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>(storage.get('spotyda_recent') || []);
   const [libraryTracks, setLibraryTracks] = useState<Track[]>(storage.get('spotyda_library') || []);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [currentQueue, setCurrentQueue] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshingRecs, setIsRefreshingRecs] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  const [customBg, setCustomBg] = useState<string | null>(storage.get('spotyda_bg'));
+  const [bgType, setBgType] = useState<'image' | 'video'>(storage.get('spotyda_bg_type') || 'image');
+  const [bgAnalysis, setBgAnalysis] = useState<WallpaperAnalysis | null>(storage.get('spotyda_bg_analysis'));
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const fetchRecommendations = useCallback(async () => {
+    setIsRefreshingRecs(true);
+    try {
+      const recs = await getRecommendations();
+      if (recs && recs.length > 0) {
+        setRecommendations(recs);
+        storage.set('spotyda_recs', recs);
+      }
+    } catch (err) {
+      console.warn("Failed to load recs", err);
+    } finally {
+      setIsRefreshingRecs(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // Скрываем загрузчик сразу при монтировании, так как у нас есть кэшированные рекомендации
     const loader = document.getElementById('loader');
     if (loader) {
       loader.style.opacity = '0';
-      setTimeout(() => loader.remove(), 300);
+      setTimeout(() => loader.remove(), 500);
     }
 
-    const initData = async () => {
-      // Даже если данные есть в кэше, пробуем обновить их незаметно
-      try {
-        const freshRecs = await getRecommendations();
-        if (freshRecs && freshRecs.length > 0) {
-          setRecommendations(freshRecs);
-          storage.set('spotyda_recs', freshRecs);
-        }
-      } catch (err) {
-        console.warn("Could not refresh data, using offline cache.");
-      }
-    };
-    initData();
+    if (recommendations.length === 0) {
+      fetchRecommendations();
+    }
   }, []);
 
   const handleSearch = useCallback(async (query: string) => {
@@ -60,19 +72,20 @@ const App: React.FC = () => {
     setIsLoading(true);
     setCurrentSection(AppSection.SEARCH);
     try {
-      const results = await searchMusic(query);
+      const optimized = await getSmartSearchQuery(query);
+      const results = await searchMusic(optimized);
       setSearchResults(results);
     } catch (err) {
-      console.error("Search failed:", err);
+      console.error("Search handle error:", err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const handlePlayTrack = useCallback((track: Track) => {
+  const handlePlayTrack = useCallback((track: Track, queue: Track[] = []) => {
     setCurrentTrack(track);
+    if (queue.length > 0) setCurrentQueue(queue);
     setIsPlaying(true);
-    
     setRecentlyPlayed(prev => {
       const filtered = prev.filter(t => t.id !== track.id);
       const updated = [track, ...filtered].slice(0, 15);
@@ -81,27 +94,156 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const playNext = useCallback(() => {
+    if (!currentTrack || currentQueue.length === 0) return;
+    const currentIndex = currentQueue.findIndex(t => t.id === currentTrack.id);
+    const nextIndex = (currentIndex + 1) % currentQueue.length;
+    setCurrentTrack(currentQueue[nextIndex]);
+  }, [currentTrack, currentQueue]);
+
+  const playPrevious = useCallback(() => {
+    if (!currentTrack || currentQueue.length === 0) return;
+    const currentIndex = currentQueue.findIndex(t => t.id === currentTrack.id);
+    const prevIndex = (currentIndex - 1 + currentQueue.length) % currentQueue.length;
+    setCurrentTrack(currentQueue[prevIndex]);
+  }, [currentTrack, currentQueue]);
+
   const toggleLibrary = useCallback((track: Track) => {
     setLibraryTracks(prev => {
-      const isBookmarked = prev.some(t => t.id === track.id);
-      const updated = isBookmarked 
-        ? prev.filter(t => t.id !== track.id) 
-        : [track, ...prev];
+      const exists = prev.some(t => t.id === track.id);
+      const updated = exists ? prev.filter(t => t.id !== track.id) : [track, ...prev];
       storage.set('spotyda_library', updated);
       return updated;
     });
   }, []);
 
-  const isInLibrary = useMemo(() => 
-    (trackId?: string) => !!libraryTracks.find(t => t.id === trackId),
-  [libraryTracks]);
+  const optimizeImage = (base64: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const TARGET_WIDTH = 1920;
+        const TARGET_HEIGHT = 1080;
+        let width = img.width;
+        let height = img.height;
+        const aspectRatio = width / height;
+        if (width > TARGET_WIDTH || height > TARGET_HEIGHT) {
+          if (aspectRatio > (TARGET_WIDTH / TARGET_HEIGHT)) {
+            width = TARGET_WIDTH;
+            height = TARGET_WIDTH / aspectRatio;
+          } else {
+            height = TARGET_HEIGHT;
+            width = TARGET_HEIGHT * aspectRatio;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          resolve(base64);
+        }
+      };
+    });
+  };
+
+  const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsAnalyzing(true);
+      const isVideo = file.type.startsWith('video/');
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        if (isVideo) {
+          setCustomBg(base64);
+          setBgType('video');
+          setBgAnalysis(null);
+          storage.set('spotyda_bg', base64);
+          storage.set('spotyda_bg_type', 'video');
+          storage.set('spotyda_bg_analysis', null);
+          setIsAnalyzing(false);
+        } else {
+          const initialOptimized = await optimizeImage(base64);
+          const enhanced = await enhanceWallpaper(initialOptimized);
+          const finalOptimized = await optimizeImage(enhanced);
+          const analysis = await analyzeWallpaper(finalOptimized);
+          setCustomBg(finalOptimized);
+          setBgType('image');
+          setBgAnalysis(analysis);
+          storage.set('spotyda_bg', finalOptimized);
+          storage.set('spotyda_bg_type', 'image');
+          storage.set('spotyda_bg_analysis', analysis);
+          setIsAnalyzing(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeBg = () => {
+    setCustomBg(null);
+    setBgAnalysis(null);
+    localStorage.removeItem('spotyda_bg');
+    localStorage.removeItem('spotyda_bg_type');
+    localStorage.removeItem('spotyda_bg_analysis');
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white overflow-hidden select-none">
-      <div className="flex flex-1 overflow-hidden relative">
-        <Sidebar currentSection={currentSection} setCurrentSection={setCurrentSection} />
-        
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[#121212] to-black scroll-smooth">
+    <div className="flex flex-col h-screen bg-black text-white overflow-hidden select-none relative">
+      {customBg && (
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          {bgType === 'video' ? (
+            <video 
+              src={customBg} 
+              autoPlay loop muted playsInline
+              className="w-full h-full object-cover opacity-70"
+            />
+          ) : (
+            <div 
+              className="absolute inset-0 bg-cover transition-all duration-1000 ease-in-out" 
+              style={{ 
+                backgroundImage: `url(${customBg})`,
+                filter: bgAnalysis?.filters || 'brightness(0.5)',
+                backgroundPosition: bgAnalysis ? `${bgAnalysis.focalPoint.x}% ${bgAnalysis.focalPoint.y}%` : 'center',
+                backgroundSize: 'cover'
+              }}
+            />
+          )}
+          <div className="absolute inset-0 z-0 bg-black/20" />
+        </div>
+      )}
+      
+      {isAnalyzing && (
+        <div className="fixed top-6 right-6 z-[200] flex items-center bg-white text-black px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-tighter shadow-2xl animate-pulse">
+          <div className="w-2 h-2 bg-[#1DB954] rounded-full mr-2"></div>
+          Gemini AI Enhancing...
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden relative z-10">
+        <Sidebar 
+          currentSection={currentSection} 
+          setCurrentSection={setCurrentSection} 
+          onBgUpload={handleBgUpload}
+          onRemoveBg={removeBg}
+          hasCustomBg={!!customBg}
+        />
+        <main className={`flex-1 overflow-y-auto relative ${customBg ? 'bg-transparent' : 'bg-gradient-to-b from-[#121212] to-black'}`}>
+          <div className="md:hidden absolute top-4 right-4 z-[50]">
+            <button 
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/10 active:scale-90 transition-transform"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            </button>
+          </div>
+
           <MainContent 
             currentSection={currentSection} 
             setCurrentSection={setCurrentSection}
@@ -112,38 +254,41 @@ const App: React.FC = () => {
             toggleLibrary={toggleLibrary}
             onSearch={handleSearch}
             onPlayTrack={handlePlayTrack}
-            isLoading={isLoading}
+            isLoading={isLoading || isRefreshingRecs}
+            onRefreshRecs={fetchRecommendations}
+            isRefreshingRecs={isRefreshingRecs}
             currentTrackId={currentTrack?.id}
+            accentColor={bgAnalysis?.themeColor}
           />
         </main>
       </div>
-
+      
       <Player 
         currentTrack={currentTrack} 
         isPlaying={isPlaying} 
         setIsPlaying={setIsPlaying}
+        onNext={playNext}
+        onPrevious={playPrevious}
         toggleLibrary={() => currentTrack && toggleLibrary(currentTrack)}
-        isInLibrary={currentTrack ? isInLibrary(currentTrack.id) : false}
+        isInLibrary={currentTrack ? libraryTracks.some(t => t.id === currentTrack.id) : false}
+        customBg={customBg}
+        bgType={bgType}
+        bgAnalysis={bgAnalysis}
       />
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[64px] bg-black/95 backdrop-blur-xl border-t border-white/5 flex items-center justify-around z-[110] px-6 pb-[env(safe-area-inset-bottom)]">
-        {[
-          { id: AppSection.HOME, label: 'Home', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-          { id: AppSection.SEARCH, label: 'Search', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
-          { id: AppSection.LIBRARY, label: 'Library', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253' }
-        ].map(item => (
-          <button 
-            key={item.id}
-            onClick={() => setCurrentSection(item.id)} 
-            className={`flex flex-col items-center justify-center transition-all ${currentSection === item.id ? 'text-white scale-105' : 'text-gray-500'}`}
-          >
-            <svg className="w-6 h-6 mb-1" fill={currentSection === item.id ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-            </svg>
-            <span className="text-[10px] font-bold">{item.label}</span>
-          </button>
-        ))}
-      </nav>
+      <BottomNav 
+        currentSection={currentSection} 
+        setCurrentSection={setCurrentSection} 
+        accentColor={bgAnalysis?.themeColor}
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onBgUpload={handleBgUpload}
+        onRemoveBg={removeBg}
+        hasCustomBg={!!customBg}
+      />
     </div>
   );
 };

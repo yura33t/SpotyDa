@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Track } from '../types.ts';
 
@@ -6,27 +5,45 @@ interface PlayerProps {
   currentTrack: Track | null;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
+  onNext: () => void;
+  onPrevious: () => void;
   toggleLibrary: () => void;
   isInLibrary: boolean;
+  customBg?: string | null;
+  bgType?: 'image' | 'video';
+  bgAnalysis?: {
+    focalPoint: { x: number; y: number };
+    filters: string;
+    themeColor: string;
+  } | null;
 }
 
-const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, toggleLibrary, isInLibrary }) => {
+const Player: React.FC<PlayerProps> = ({ 
+  currentTrack, 
+  isPlaying, 
+  setIsPlaying, 
+  onNext, 
+  onPrevious,
+  toggleLibrary, 
+  isInLibrary,
+  customBg,
+  bgType = 'image',
+  bgAnalysis
+}) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const touchStartY = useRef<number>(0);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio && currentTrack) {
       if (isPlaying) {
-        audio.play().catch(error => {
-          // Мобильные браузеры часто блокируют первый запуск (Autoplay policy)
-          console.warn("Playback blocked by browser policy. Interaction required.");
-          setIsPlaying(false);
-        });
+        audio.play().catch(() => setIsPlaying(false));
       } else {
         audio.pause();
       }
@@ -39,11 +56,9 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
       audio.pause();
       audio.src = currentTrack.audioUrl;
       audio.load();
-      
       setIsBuffering(true);
       setProgress(0);
       setCurrentTime(0);
-      
       if (isPlaying) {
         audio.play().catch(() => setIsPlaying(false));
       }
@@ -71,95 +86,164 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
     const bar = progressBarRef.current;
     if (audio && duration && bar) {
       const rect = bar.getBoundingClientRect();
-      let clientX = 0;
-      if ('touches' in e) {
-        clientX = e.touches[0].clientX;
-      } else {
-        clientX = e.clientX;
-      }
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const x = clientX - rect.left;
       const percentage = Math.max(0, Math.min(1, x / rect.width));
       audio.currentTime = percentage * duration;
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const touchEndY = e.changedTouches[0].clientY;
+    if (touchEndY - touchStartY.current > 100) {
+      setIsExpanded(false);
+    }
+  };
+
   if (!currentTrack) return null;
 
   return (
-    <div className="fixed bottom-[64px] md:bottom-0 left-0 right-0 h-[76px] md:h-24 bg-[#0a0a0a]/95 border-t border-white/5 px-4 flex flex-col z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl transition-all">
+    <>
+      {/* Fullscreen Player Modal */}
       <div 
-        className="absolute -top-1.5 left-0 right-0 h-5 cursor-pointer z-10 group"
-        onClick={handleSeek}
+        className={`fixed inset-0 z-[400] bg-black transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] ${isExpanded ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
-        <div ref={progressBarRef} className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1 bg-white/10 overflow-hidden group-hover:h-1.5 transition-all">
-          <div 
-            className="h-full bg-[#1DB954] transition-all duration-75 ease-linear relative" 
-            style={{ width: `${progress}%` }}
-          >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow-xl transition-opacity"></div>
+        {/* Sync Background Layer */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          {customBg ? (
+            bgType === 'video' ? (
+              <video src={customBg} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-40" />
+            ) : (
+              <div 
+                className="absolute inset-0 bg-cover opacity-35" 
+                style={{ 
+                  backgroundImage: `url(${customBg})`,
+                  filter: 'none', // No blur for custom background
+                  backgroundPosition: bgAnalysis ? `${bgAnalysis.focalPoint.x}% ${bgAnalysis.focalPoint.y}%` : 'center'
+                }} 
+              />
+            )
+          ) : (
+            <div 
+              className="absolute inset-0 opacity-40 bg-cover bg-center blur-2xl scale-110" 
+              style={{ backgroundImage: `url(${currentTrack.coverUrl})` }}
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black" />
+        </div>
+
+        <div className="relative h-full flex flex-col p-6 pt-12 pb-12 max-w-lg mx-auto z-10">
+          <button 
+            onClick={() => setIsExpanded(false)}
+            className="self-center md:self-start w-12 h-1 bg-white/30 rounded-full mb-12 hover:bg-white/50 transition-colors"
+          />
+
+          <div className="flex-1 flex flex-col items-center justify-center space-y-10 md:space-y-12">
+            <div className={`relative w-full aspect-square shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden transition-all duration-700 ${isPlaying ? 'scale-100' : 'scale-[0.85] opacity-60'}`}>
+              <img src={currentTrack.coverUrl} className="w-full h-full object-cover" alt={currentTrack.title} />
+              {isBuffering && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+                  <div className="w-12 h-12 border-4 border-[#1DB954] border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+            </div>
+
+            <div className="w-full space-y-8">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 pr-4">
+                  <h2 className="text-2xl md:text-3xl font-black truncate leading-tight tracking-tight drop-shadow-lg">{currentTrack.title}</h2>
+                  <p className="text-lg md:text-xl text-white/60 font-bold truncate tracking-tight">{currentTrack.artist}</p>
+                </div>
+                <button onClick={toggleLibrary} className={`transition-all active:scale-75 ${isInLibrary ? 'text-[#1DB954]' : 'text-white/40'}`}>
+                  <svg className="w-8 h-8" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full">
+                <div 
+                  ref={progressBarRef}
+                  onClick={handleSeek}
+                  onTouchMove={(e) => handleSeek(e)}
+                  className="h-1.5 bg-white/10 rounded-full relative cursor-pointer"
+                >
+                  <div 
+                    className="absolute inset-0 h-full rounded-full transition-all duration-100" 
+                    style={{ width: `${progress}%`, backgroundColor: bgAnalysis?.themeColor || '#1DB954' }} 
+                  />
+                  <div 
+                    className="absolute h-4 w-4 bg-white rounded-full -top-[5px] -ml-2 shadow-lg"
+                    style={{ left: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-3 text-[10px] md:text-xs font-bold text-white/40">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration) || currentTrack.duration}</span>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center justify-between">
+                <button className="text-white/40 hover:text-white transition-colors"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
+                <div className="flex items-center space-x-8 md:space-x-12">
+                  <button onClick={onPrevious} className="text-white active:scale-75 transition-transform"><svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6L18 6v12z"/></svg></button>
+                  <button 
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full flex items-center justify-center text-black active:scale-90 transition-all shadow-2xl"
+                  >
+                    {isPlaying ? <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> : <svg className="w-10 h-10 ml-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>}
+                  </button>
+                  <button onClick={onNext} className="text-white active:scale-75 transition-transform"><svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6zm9-12v12h2V6z"/></svg></button>
+                </div>
+                <button className="text-white/40 hover:text-white transition-colors"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 14.35 4 12.94l6.59-6.59 6.59 6.59-1.41 1.41-5.18-5.18zm0 5.66l5.18-5.18 1.41 1.41-6.59 6.59-6.59-6.59 1.41-1.41 5.18 5.18z"/></svg></button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between h-full pt-1">
-        <div className="flex items-center w-1/2 md:w-1/3 space-x-3 min-w-0">
-          <div className="relative shrink-0 group">
-            <img 
-              src={currentTrack.coverUrl} 
-              alt={currentTrack.title} 
-              className={`w-11 h-11 md:w-16 md:h-16 rounded shadow-lg object-cover bg-white/5 transition-all ${isBuffering ? 'opacity-40 blur-[1px]' : 'opacity-100'}`} 
-            />
-            {isBuffering && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-5 h-5 border-2 border-[#1DB954] border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="text-white text-sm md:text-base font-bold truncate leading-tight">{currentTrack.title}</h4>
-            <p className="text-[#b3b3b3] text-[11px] md:text-sm truncate">{currentTrack.artist}</p>
+      {/* Mini Player */}
+      <div 
+        onClick={() => setIsExpanded(true)}
+        className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-2 left-2 right-2 h-[64px] bg-[#1a1a1a]/90 backdrop-blur-md border border-white/5 rounded-xl px-3 flex items-center justify-between z-[170] shadow-2xl active:scale-[0.98] transition-transform"
+      >
+        <div className="flex items-center w-2/3 space-x-3 min-w-0">
+          <img src={currentTrack.coverUrl} className="w-11 h-11 rounded-md shadow-lg object-cover" alt={currentTrack.title} />
+          <div className="min-w-0">
+            <h4 className="text-white text-xs font-bold truncate leading-tight">{currentTrack.title}</h4>
+            <p className="text-white/50 text-[10px] truncate">{currentTrack.artist}</p>
           </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center flex-1 md:w-1/3">
-          <div className="flex items-center space-x-5 md:space-x-8">
-            <button onClick={() => setIsPlaying(!isPlaying)} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all text-black shadow-xl">
-              {isPlaying ? (
-                <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-              ) : (
-                <svg className="w-5 h-5 md:w-6 md:h-6 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              )}
-            </button>
-            <button onClick={toggleLibrary} className={`transition-all hover:scale-110 ${isInLibrary ? 'text-[#1DB954]' : 'text-gray-400'} hover:text-white`}>
-              <svg className="w-5 h-5 md:w-6 md:h-6" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
-            </button>
-          </div>
-          
-          <div className="flex w-full items-center justify-center space-x-3 text-[10px] md:text-xs text-[#b3b3b3] mt-2 font-medium">
-            <span className="w-10 text-right">{formatTime(currentTime)}</span>
-            <div className="hidden md:block flex-1 max-w-[400px] h-1 bg-white/10 rounded-full relative overflow-hidden">
-               <div className="absolute top-0 left-0 h-full bg-[#1DB954]" style={{ width: `${progress}%` }}></div>
-            </div>
-            <span className="w-10 text-left">{formatTime(duration) || currentTrack.duration}</span>
-          </div>
+        <div className="flex items-center space-x-4 pr-1">
+          <button 
+            onClick={(e) => {e.stopPropagation(); setIsPlaying(!isPlaying);}}
+            className="w-10 h-10 flex items-center justify-center text-white"
+          >
+             {isPlaying ? <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> : <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>}
+          </button>
+          <button onClick={(e) => {e.stopPropagation(); toggleLibrary();}} className={`transition-all ${isInLibrary ? 'text-[#1DB954]' : 'text-white/40'}`}>
+             <svg className="w-6 h-6" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+          </button>
         </div>
-
-        <div className="hidden md:flex items-center w-1/3 justify-end space-x-4">
-          <div className="flex items-center space-x-2">
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-            <div className="w-24 h-1 bg-white/10 rounded-full relative cursor-pointer">
-              <div className="absolute top-0 left-0 h-full bg-white rounded-full" style={{ width: `75%` }}></div>
-            </div>
-          </div>
+        
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10 rounded-b-xl overflow-hidden">
+            <div className="h-full bg-white/40 transition-all duration-300" style={{ width: `${progress}%` }}></div>
         </div>
       </div>
 
       <audio 
         ref={audioRef} 
         onTimeUpdate={handleTimeUpdate} 
-        onEnded={() => setIsPlaying(false)}
+        onEnded={onNext}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
         onCanPlay={() => setIsBuffering(false)}
@@ -167,7 +251,7 @@ const Player: React.FC<PlayerProps> = ({ currentTrack, isPlaying, setIsPlaying, 
         preload="auto"
         crossOrigin="anonymous"
       />
-    </div>
+    </>
   );
 };
 
