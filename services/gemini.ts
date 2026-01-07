@@ -1,89 +1,52 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { Track } from "../types.ts";
 
-// Прямой доступ к ключу согласно правилам
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Используем iTunes Search API - бесплатно, без ключей, только реальные данные
+const ITUNES_BASE_URL = "https://itunes.apple.com/search";
 
-const cache = new Map<string, any>();
+const formatDuration = (ms: number): string => {
+  if (!ms) return "0:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const mapItunesTrack = (item: any): Track => ({
+  id: String(item.trackId || Math.random()),
+  title: item.trackName || "Unknown Title",
+  artist: item.artistName || "Unknown Artist",
+  album: item.collectionName || "Unknown Album",
+  coverUrl: (item.artworkUrl100 || "").replace("100x100bb", "600x600bb"), // Берем обложку в высоком качестве
+  audioUrl: item.previewUrl || "", // Реальная ссылка на 30-сек превью
+  duration: formatDuration(item.trackTimeMillis || 30000)
+});
 
 export const searchMusic = async (query: string): Promise<Track[]> => {
-  const cacheKey = `search_${query.trim().toLowerCase()}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
+  if (!query.trim()) return [];
+  
   try {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Search for real music tracks matching: "${query}". 
-      Return exactly 10 tracks as a JSON array. 
-      Important: audioUrl should be a direct link to a high-quality preview or a valid stream. 
-      Use https://picsum.photos/seed/{id}/500/500 for coverUrl.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              title: { type: Type.STRING },
-              artist: { type: Type.STRING },
-              album: { type: Type.STRING },
-              coverUrl: { type: Type.STRING },
-              duration: { type: Type.STRING },
-              audioUrl: { type: Type.STRING },
-            },
-            required: ["id", "title", "artist", "album", "coverUrl", "duration", "audioUrl"],
-          },
-        },
-      },
-    });
-
-    const data = JSON.parse(response.text || "[]");
-    cache.set(cacheKey, data);
-    return data;
+    const response = await fetch(`${ITUNES_BASE_URL}?term=${encodeURIComponent(query)}&media=music&limit=20`);
+    if (!response.ok) throw new Error("Network response was not ok");
+    
+    const data = await response.json();
+    return (data.results || []).map(mapItunesTrack);
   } catch (e) {
-    console.error("Search failed:", e);
+    console.error("iTunes Search failed:", e);
     return [];
   }
 };
 
 export const getRecommendations = async (): Promise<Track[]> => {
-  const cacheKey = 'recs_v2';
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
+  // Для рекомендаций просто ищем популярные хиты 2024-2025
   try {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: "Generate a list of 12 trending global hits. Return as JSON array with id, title, artist, album, coverUrl (picsum), duration, and audioUrl.",
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              title: { type: Type.STRING },
-              artist: { type: Type.STRING },
-              album: { type: Type.STRING },
-              coverUrl: { type: Type.STRING },
-              duration: { type: Type.STRING },
-              audioUrl: { type: Type.STRING },
-            },
-            required: ["id", "title", "artist", "album", "coverUrl", "duration", "audioUrl"],
-          },
-        },
-      },
-    });
-
-    const data = JSON.parse(response.text || "[]");
-    cache.set(cacheKey, data);
-    return data;
+    const response = await fetch(`${ITUNES_BASE_URL}?term=2024+hits&media=music&limit=15&sort=recent`);
+    if (!response.ok) throw new Error("Network response was not ok");
+    
+    const data = await response.json();
+    return (data.results || []).map(mapItunesTrack);
   } catch (e) {
-    console.error("Recommendations failed:", e);
+    console.error("iTunes Recommendations failed:", e);
     return [];
   }
 };
