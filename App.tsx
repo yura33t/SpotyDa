@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainContent from './components/MainContent.tsx';
 import Player from './components/Player.tsx';
 import BottomNav from './components/BottomNav.tsx';
 import SettingsModal from './components/SettingsModal.tsx';
-import { AppSection, Track } from './types.ts';
+import PlaylistModal from './components/PlaylistModal.tsx';
+import { AppSection, Track, Playlist } from './types.ts';
 import { getRecommendations, searchMusic } from './services/musicApi.ts';
 import { getSmartSearchQuery, analyzeWallpaper, enhanceWallpaper, WallpaperAnalysis } from './services/gemini.ts';
 
@@ -28,17 +30,30 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>(storage.get('spotyda_recent') || []);
   const [libraryTracks, setLibraryTracks] = useState<Track[]>(storage.get('spotyda_library') || []);
+  const [playlists, setPlaylists] = useState<Playlist[]>(storage.get('spotyda_playlists') || []);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [currentQueue, setCurrentQueue] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshingRecs, setIsRefreshingRecs] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(storage.get('spotyda_theme_dark') ?? true);
   
+  const [trackToAdd, setTrackToAdd] = useState<Track | null>(null);
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+
   const [customBg, setCustomBg] = useState<string | null>(storage.get('spotyda_bg'));
   const [bgType, setBgType] = useState<'image' | 'video'>(storage.get('spotyda_bg_type') || 'image');
   const [bgAnalysis, setBgAnalysis] = useState<WallpaperAnalysis | null>(storage.get('spotyda_bg_analysis'));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const toggleTheme = () => {
+    const newVal = !isDarkMode;
+    setIsDarkMode(newVal);
+    storage.set('spotyda_theme_dark', newVal);
+  };
 
   const fetchRecommendations = useCallback(async () => {
     setIsRefreshingRecs(true);
@@ -117,6 +132,65 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const createPlaylist = () => {
+    const newPlaylist: Playlist = {
+      id: Date.now().toString(),
+      title: `Мой плейлист #${playlists.length + 1}`,
+      tracks: [],
+      createdAt: Date.now()
+    };
+    const updated = [newPlaylist, ...playlists];
+    setPlaylists(updated);
+    storage.set('spotyda_playlists', updated);
+    setSelectedPlaylistId(newPlaylist.id);
+    setCurrentSection(AppSection.PLAYLIST);
+  };
+
+  const deletePlaylist = (id: string) => {
+    const updated = playlists.filter(p => p.id !== id);
+    setPlaylists(updated);
+    storage.set('spotyda_playlists', updated);
+    if (selectedPlaylistId === id) {
+      setCurrentSection(AppSection.HOME);
+      setSelectedPlaylistId(null);
+    }
+  };
+
+  const renamePlaylist = (id: string, newTitle: string) => {
+    const updated = playlists.map(p => p.id === id ? { ...p, title: newTitle } : p);
+    setPlaylists(updated);
+    storage.set('spotyda_playlists', updated);
+  };
+
+  const addToPlaylist = (playlistId: string, track: Track) => {
+    const updated = playlists.map(p => {
+      if (p.id === playlistId) {
+        if (p.tracks.some(t => t.id === track.id)) return p;
+        return { ...p, tracks: [...p.tracks, track] };
+      }
+      return p;
+    });
+    setPlaylists(updated);
+    storage.set('spotyda_playlists', updated);
+    setIsPlaylistModalOpen(false);
+  };
+
+  const removeFromPlaylist = (playlistId: string, trackId: string) => {
+    const updated = playlists.map(p => {
+      if (p.id === playlistId) {
+        return { ...p, tracks: p.tracks.filter(t => t.id !== trackId) };
+      }
+      return p;
+    });
+    setPlaylists(updated);
+    storage.set('spotyda_playlists', updated);
+  };
+
+  const handleOpenPlaylistModal = (track: Track) => {
+    setTrackToAdd(track);
+    setIsPlaylistModalOpen(true);
+  };
+
   const optimizeImage = (base64: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -194,28 +268,30 @@ const App: React.FC = () => {
     localStorage.removeItem('spotyda_bg_analysis');
   };
 
+  const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId);
+
   return (
-    <div className="flex flex-col h-screen bg-black text-white overflow-hidden select-none relative">
+    <div className={`flex flex-col h-screen overflow-hidden select-none relative transition-colors duration-500 ${isDarkMode ? 'bg-black text-white' : 'bg-gray-50 text-gray-900'} ${isDarkMode ? 'dark' : ''}`}>
       {customBg && (
         <div className="absolute inset-0 z-0 overflow-hidden">
           {bgType === 'video' ? (
             <video 
               src={customBg} 
               autoPlay loop muted playsInline
-              className="w-full h-full object-cover opacity-70"
+              className={`w-full h-full object-cover ${isDarkMode ? 'opacity-70' : 'opacity-40'}`}
             />
           ) : (
             <div 
               className="absolute inset-0 bg-cover transition-all duration-1000 ease-in-out" 
               style={{ 
                 backgroundImage: `url(${customBg})`,
-                filter: bgAnalysis?.filters || 'brightness(0.5)',
+                filter: bgAnalysis?.filters || (isDarkMode ? 'brightness(0.5)' : 'brightness(0.8)'),
                 backgroundPosition: bgAnalysis ? `${bgAnalysis.focalPoint.x}% ${bgAnalysis.focalPoint.y}%` : 'center',
                 backgroundSize: 'cover'
               }}
             />
           )}
-          <div className="absolute inset-0 z-0 bg-black/20" />
+          <div className={`absolute inset-0 z-0 ${isDarkMode ? 'bg-black/20' : 'bg-white/10'}`} />
         </div>
       )}
       
@@ -233,12 +309,18 @@ const App: React.FC = () => {
           onBgUpload={handleBgUpload}
           onRemoveBg={removeBg}
           hasCustomBg={!!customBg}
+          isDarkMode={isDarkMode}
+          onToggleTheme={toggleTheme}
+          playlists={playlists}
+          selectedPlaylistId={selectedPlaylistId}
+          setSelectedPlaylistId={setSelectedPlaylistId}
+          onCreatePlaylist={createPlaylist}
         />
-        <main className={`flex-1 overflow-y-auto relative ${customBg ? 'bg-transparent' : 'bg-gradient-to-b from-[#121212] to-black'}`}>
+        <main className={`flex-1 overflow-y-auto relative ${customBg ? 'bg-transparent' : isDarkMode ? 'bg-gradient-to-b from-[#121212] to-black' : 'bg-gradient-to-b from-white to-gray-100'}`}>
           <div className="md:hidden absolute top-4 right-4 z-[50]">
             <button 
               onClick={() => setIsSettingsOpen(true)}
-              className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/10 active:scale-90 transition-transform"
+              className={`p-3 backdrop-blur-md rounded-full border active:scale-90 transition-transform ${isDarkMode ? 'bg-white/10 text-white border-white/10' : 'bg-black/5 text-gray-900 border-black/5'}`}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
@@ -259,6 +341,12 @@ const App: React.FC = () => {
             isRefreshingRecs={isRefreshingRecs}
             currentTrackId={currentTrack?.id}
             accentColor={bgAnalysis?.themeColor}
+            isDarkMode={isDarkMode}
+            selectedPlaylist={selectedPlaylist}
+            onRenamePlaylist={renamePlaylist}
+            onDeletePlaylist={deletePlaylist}
+            onRemoveFromPlaylist={removeFromPlaylist}
+            onAddToPlaylistClick={handleOpenPlaylistModal}
           />
         </main>
       </div>
@@ -274,12 +362,14 @@ const App: React.FC = () => {
         customBg={customBg}
         bgType={bgType}
         bgAnalysis={bgAnalysis}
+        isDarkMode={isDarkMode}
       />
 
       <BottomNav 
         currentSection={currentSection} 
         setCurrentSection={setCurrentSection} 
         accentColor={bgAnalysis?.themeColor}
+        isDarkMode={isDarkMode}
       />
 
       <SettingsModal 
@@ -288,6 +378,18 @@ const App: React.FC = () => {
         onBgUpload={handleBgUpload}
         onRemoveBg={removeBg}
         hasCustomBg={!!customBg}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+      />
+
+      <PlaylistModal 
+        isOpen={isPlaylistModalOpen}
+        onClose={() => setIsPlaylistModalOpen(false)}
+        playlists={playlists}
+        track={trackToAdd}
+        onAddToPlaylist={addToPlaylist}
+        onCreatePlaylist={createPlaylist}
+        isDarkMode={isDarkMode}
       />
     </div>
   );

@@ -5,9 +5,15 @@ interface BottomNavProps {
   currentSection: AppSection;
   setCurrentSection: (section: AppSection) => void;
   accentColor?: string;
+  isDarkMode: boolean;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ currentSection, setCurrentSection, accentColor = '#1DB954' }) => {
+const BottomNav: React.FC<BottomNavProps> = ({ 
+  currentSection, 
+  setCurrentSection, 
+  accentColor = '#1DB954',
+  isDarkMode
+}) => {
   const items = [
     { id: AppSection.HOME, label: 'Главная', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
     { id: AppSection.SEARCH, label: 'Поиск', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
@@ -15,7 +21,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentSection, setCurrentSection
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[calc(64px+env(safe-area-inset-bottom))] bg-black/60 backdrop-blur-xl border-t border-white/5 px-6 pb-[env(safe-area-inset-bottom)] flex items-center justify-between z-[180]">
+    <nav className={`md:hidden fixed bottom-0 left-0 right-0 h-[calc(64px+env(safe-area-inset-bottom))] backdrop-blur-xl border-t px-6 pb-[env(safe-area-inset-bottom)] flex items-center justify-between z-[180] transition-colors duration-500 ${isDarkMode ? 'bg-black/60 border-white/5' : 'bg-white/80 border-gray-100'}`}>
       {items.map((item) => (
         <button
           key={item.id}
