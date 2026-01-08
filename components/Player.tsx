@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+
 import { Track } from '../types.ts';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface PlayerProps {
   currentTrack: Track | null;
@@ -45,7 +46,12 @@ const Player: React.FC<PlayerProps> = ({
     const audio = audioRef.current;
     if (audio && currentTrack) {
       if (isPlaying) {
-        audio.play().catch(() => setIsPlaying(false));
+        // На мобильных play() должен быть вызван в ответ на действие пользователя,
+        // но React эффекты иногда срабатывают позже. catch помогает избежать ошибок.
+        audio.play().catch(err => {
+          console.warn("Playback failed or interrupted", err);
+          setIsPlaying(false);
+        });
       } else {
         audio.pause();
       }
@@ -88,7 +94,7 @@ const Player: React.FC<PlayerProps> = ({
     const bar = progressBarRef.current;
     if (audio && duration && bar) {
       const rect = bar.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
       const x = clientX - rect.left;
       const percentage = Math.max(0, Math.min(1, x / rect.width));
       audio.currentTime = percentage * duration;
@@ -116,7 +122,6 @@ const Player: React.FC<PlayerProps> = ({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Sync Background Layer */}
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
           {customBg ? (
             bgType === 'video' ? (
@@ -168,7 +173,6 @@ const Player: React.FC<PlayerProps> = ({
                 </button>
               </div>
 
-              {/* Progress Bar */}
               <div className="w-full">
                 <div 
                   ref={progressBarRef}
@@ -191,7 +195,6 @@ const Player: React.FC<PlayerProps> = ({
                 </div>
               </div>
 
-              {/* Controls */}
               <div className="flex items-center justify-between">
                 <button className={`transition-colors ${isDarkMode ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
                 <div className="flex items-center space-x-8 md:space-x-12">
@@ -249,8 +252,8 @@ const Player: React.FC<PlayerProps> = ({
         onPlaying={() => setIsBuffering(false)}
         onCanPlay={() => setIsBuffering(false)}
         onLoadedMetadata={handleTimeUpdate}
+        onError={() => setIsBuffering(false)}
         preload="auto"
-        crossOrigin="anonymous"
       />
     </>
   );

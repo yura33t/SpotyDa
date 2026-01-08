@@ -56,6 +56,7 @@ const App: React.FC = () => {
   };
 
   const fetchRecommendations = useCallback(async () => {
+    if (isRefreshingRecs) return;
     setIsRefreshingRecs(true);
     try {
       const recs = await getRecommendations();
@@ -68,7 +69,7 @@ const App: React.FC = () => {
     } finally {
       setIsRefreshingRecs(false);
     }
-  }, []);
+  }, [isRefreshingRecs]);
 
   useEffect(() => {
     const loader = document.getElementById('loader');
@@ -87,6 +88,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setCurrentSection(AppSection.SEARCH);
     try {
+      // Пытаемся оптимизировать запрос, но если Gemini тупит - используем оригинал через 2сек
       const optimized = await getSmartSearchQuery(query);
       const results = await searchMusic(optimized);
       setSearchResults(results);
@@ -197,8 +199,8 @@ const App: React.FC = () => {
       img.src = base64;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const TARGET_WIDTH = 1920;
-        const TARGET_HEIGHT = 1080;
+        const TARGET_WIDTH = 1280; // Снижаем разрешение для скорости анализа
+        const TARGET_HEIGHT = 720;
         let width = img.width;
         let height = img.height;
         const aspectRatio = width / height;
@@ -216,9 +218,8 @@ const App: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         } else {
           resolve(base64);
         }
@@ -243,17 +244,22 @@ const App: React.FC = () => {
           storage.set('spotyda_bg_analysis', null);
           setIsAnalyzing(false);
         } else {
-          const initialOptimized = await optimizeImage(base64);
-          const enhanced = await enhanceWallpaper(initialOptimized);
-          const finalOptimized = await optimizeImage(enhanced);
-          const analysis = await analyzeWallpaper(finalOptimized);
-          setCustomBg(finalOptimized);
-          setBgType('image');
-          setBgAnalysis(analysis);
-          storage.set('spotyda_bg', finalOptimized);
-          storage.set('spotyda_bg_type', 'image');
-          storage.set('spotyda_bg_analysis', analysis);
-          setIsAnalyzing(false);
+          try {
+            const initialOptimized = await optimizeImage(base64);
+            const enhanced = await enhanceWallpaper(initialOptimized);
+            const finalOptimized = await optimizeImage(enhanced);
+            const analysis = await analyzeWallpaper(finalOptimized);
+            setCustomBg(finalOptimized);
+            setBgType('image');
+            setBgAnalysis(analysis);
+            storage.set('spotyda_bg', finalOptimized);
+            storage.set('spotyda_bg_type', 'image');
+            storage.set('spotyda_bg_analysis', analysis);
+          } catch (err) {
+            console.error("BG process error", err);
+          } finally {
+            setIsAnalyzing(false);
+          }
         }
       };
       reader.readAsDataURL(file);
