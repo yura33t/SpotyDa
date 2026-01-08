@@ -87,7 +87,9 @@ export const analyzeWallpaper = async (base64Image: string): Promise<WallpaperAn
       }
     });
 
-    return JSON.parse(response.text) as WallpaperAnalysis;
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
+    return JSON.parse(text) as WallpaperAnalysis;
   } catch (error) {
     console.error("AI Wallpaper analysis failed:", error);
     return { focalPoint: { x: 50, y: 50 }, filters: 'brightness(0.5)', themeColor: '#1DB954' };
@@ -122,9 +124,12 @@ export const enhanceWallpaper = async (base64Image: string): Promise<string> => 
       },
     });
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/jpeg;base64,${part.inlineData.data}`;
+    const candidates = response.candidates;
+    if (candidates && candidates.length > 0) {
+      for (const part of candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/jpeg;base64,${part.inlineData.data}`;
+        }
       }
     }
     return base64Image;
