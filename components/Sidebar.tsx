@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { AppSection, Playlist } from '../types.ts';
 
@@ -36,11 +37,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: AppSection.LIBRARY, label: 'Медиатека', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
   ];
 
+  const Logo = () => (
+    <svg className="w-8 h-8 flex-shrink-0 drop-shadow-[0_0_8px_rgba(255,85,0,0.3)]" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="50" fill="#FF5500"/>
+        <path d="M41 38.5C41 38.5 45.5 31.5 51.5 29.5C57.5 27.5 51.5 35 51.5 35L41.5 41.5C41.5 41.5 45 44 46.5 48C48 52 46 54.5 46 54.5L46.5 59.5C46.5 59.5 48 64.5 51.5 66.5C55 68.5 52 64.5 52 64.5C52 64.5 50.5 59.5 51.5 58C52.5 56.5 55 58.5 55 58.5" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  );
+
   return (
     <div className={`hidden md:flex w-64 backdrop-blur-md h-full flex-col p-4 pb-8 space-y-6 shrink-0 border-r transition-colors duration-500 ${isDarkMode ? 'bg-black/60 border-white/5' : 'bg-white/60 border-gray-200'}`}>
       <div className="flex flex-col px-2 py-4">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-[#1DB954] rounded-full shadow-lg shadow-[#1DB954]/20 flex-shrink-0"></div>
+          <Logo />
           <span className={`text-2xl font-black tracking-tighter transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SpotyDa</span>
         </div>
         <span className="text-[8px] font-bold text-gray-500 uppercase tracking-[3px] mt-1 ml-11">by GOODvibe studio</span>

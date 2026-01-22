@@ -1,6 +1,7 @@
 
 import { Track } from '../types.ts';
 import React, { useState, useEffect, useRef } from 'react';
+import { getStreamUrl } from '../services/musicApi.ts';
 
 interface PlayerProps {
   currentTrack: Track | null;
@@ -42,34 +43,49 @@ const Player: React.FC<PlayerProps> = ({
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef<number>(0);
 
+  // Синхронизация состояния Play/Pause
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio && currentTrack) {
+    if (audio && audio.src && currentTrack) {
       if (isPlaying) {
-        // На мобильных play() должен быть вызван в ответ на действие пользователя,
-        // но React эффекты иногда срабатывают позже. catch помогает избежать ошибок.
         audio.play().catch(err => {
-          console.warn("Playback failed or interrupted", err);
+          console.warn("Playback failed:", err);
           setIsPlaying(false);
         });
       } else {
         audio.pause();
       }
     }
-  }, [isPlaying, currentTrack]);
+  }, [isPlaying]);
 
+  // Загрузка нового трека
   useEffect(() => {
     const audio = audioRef.current;
     if (audio && currentTrack) {
-      audio.pause();
-      audio.src = currentTrack.audioUrl;
-      audio.load();
-      setIsBuffering(true);
-      setProgress(0);
-      setCurrentTime(0);
-      if (isPlaying) {
-        audio.play().catch(() => setIsPlaying(false));
-      }
+      const loadAndPlay = async () => {
+        setIsBuffering(true);
+        audio.pause();
+        
+        try {
+          const streamUrl = await getStreamUrl(currentTrack);
+          if (!streamUrl) throw new Error("No stream URL");
+          
+          audio.src = streamUrl;
+          audio.load();
+          
+          // В браузерах play() должен вызываться после взаимодействия пользователя
+          if (isPlaying) {
+            await audio.play();
+          }
+        } catch (err) {
+          console.error("Audio Load Error:", err);
+          setIsBuffering(false);
+          // Если трек не грузится (например, заблокирован в регионе), идем к следующему
+          onNext();
+        }
+      };
+
+      loadAndPlay();
     }
   }, [currentTrack]);
 
@@ -80,6 +96,13 @@ const Player: React.FC<PlayerProps> = ({
       setDuration(audio.duration || 0);
       setProgress(audio.duration ? (audio.currentTime / audio.duration) * 100 : 0);
     }
+  };
+
+  const handleAudioError = () => {
+    setIsBuffering(false);
+    console.error("Audio element error detected");
+    // Небольшая задержка перед скипом, чтобы не зациклиться
+    setTimeout(onNext, 2000);
   };
 
   const formatTime = (time: number) => {
@@ -94,21 +117,10 @@ const Player: React.FC<PlayerProps> = ({
     const bar = progressBarRef.current;
     if (audio && duration && bar) {
       const rect = bar.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
       const x = clientX - rect.left;
       const percentage = Math.max(0, Math.min(1, x / rect.width));
       audio.currentTime = percentage * duration;
-    }
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const touchEndY = e.changedTouches[0].clientY;
-    if (touchEndY - touchStartY.current > 100) {
-      setIsExpanded(false);
     }
   };
 
@@ -116,11 +128,14 @@ const Player: React.FC<PlayerProps> = ({
 
   return (
     <>
-      {/* Fullscreen Player Modal */}
+      {/* Полный экран плеера */}
       <div 
         className={`fixed inset-0 z-[400] transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] ${isExpanded ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black' : 'bg-gray-50'}`}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        onTouchStart={(e) => touchStartY.current = e.touches[0].clientY}
+        onTouchEnd={(e) => {
+            const touchEndY = e.changedTouches[0].clientY;
+            if (touchEndY - touchStartY.current > 100) setIsExpanded(false);
+        }}
       >
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
           {customBg ? (
@@ -155,7 +170,7 @@ const Player: React.FC<PlayerProps> = ({
               <img src={currentTrack.coverUrl} className="w-full h-full object-cover" alt={currentTrack.title} />
               {isBuffering && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-                  <div className="w-12 h-12 border-4 border-[#1DB954] border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-12 h-12 border-4 border-[#FF5500] border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
             </div>
@@ -166,7 +181,7 @@ const Player: React.FC<PlayerProps> = ({
                   <h2 className={`text-2xl md:text-3xl font-black truncate leading-tight tracking-tight drop-shadow-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{currentTrack.title}</h2>
                   <p className={`text-lg md:text-xl font-bold truncate tracking-tight ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>{currentTrack.artist}</p>
                 </div>
-                <button onClick={toggleLibrary} className={`transition-all active:scale-75 ${isInLibrary ? 'text-[#1DB954]' : (isDarkMode ? 'text-white/40' : 'text-gray-400')}`}>
+                <button onClick={toggleLibrary} className={`transition-all active:scale-75 ${isInLibrary ? 'text-[#FF5500]' : (isDarkMode ? 'text-white/40' : 'text-gray-400')}`}>
                   <svg className="w-8 h-8" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
@@ -177,12 +192,11 @@ const Player: React.FC<PlayerProps> = ({
                 <div 
                   ref={progressBarRef}
                   onClick={handleSeek}
-                  onTouchMove={(e) => handleSeek(e)}
                   className={`h-1.5 rounded-full relative cursor-pointer ${isDarkMode ? 'bg-white/10' : 'bg-black/10'}`}
                 >
                   <div 
                     className="absolute inset-0 h-full rounded-full transition-all duration-100" 
-                    style={{ width: `${progress}%`, backgroundColor: bgAnalysis?.themeColor || '#1DB954' }} 
+                    style={{ width: `${progress}%`, backgroundColor: '#FF5500' }} 
                   />
                   <div 
                     className={`absolute h-4 w-4 rounded-full -top-[5px] -ml-2 shadow-lg ${isDarkMode ? 'bg-white' : 'bg-gray-900'}`}
@@ -214,7 +228,7 @@ const Player: React.FC<PlayerProps> = ({
         </div>
       </div>
 
-      {/* Mini Player */}
+      {/* Мини-плеер */}
       <div 
         onClick={() => setIsExpanded(true)}
         className={`fixed bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-6 left-2 right-2 md:left-[272px] md:right-6 h-[64px] backdrop-blur-md border rounded-xl px-3 flex items-center justify-between z-[170] shadow-2xl active:scale-[0.98] transition-all duration-500 ${isDarkMode ? 'bg-[#1a1a1a]/90 border-white/5' : 'bg-white/90 border-gray-100'}`}
@@ -234,7 +248,7 @@ const Player: React.FC<PlayerProps> = ({
           >
              {isPlaying ? <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> : <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>}
           </button>
-          <button onClick={(e) => {e.stopPropagation(); toggleLibrary();}} className={`transition-all ${isInLibrary ? 'text-[#1DB954]' : (isDarkMode ? 'text-white/40' : 'text-gray-400')}`}>
+          <button onClick={(e) => {e.stopPropagation(); toggleLibrary();}} className={`transition-all ${isInLibrary ? 'text-[#FF5500]' : (isDarkMode ? 'text-white/40' : 'text-gray-400')}`}>
              <svg className="w-6 h-6" fill={isInLibrary ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
           </button>
         </div>
@@ -252,7 +266,7 @@ const Player: React.FC<PlayerProps> = ({
         onPlaying={() => setIsBuffering(false)}
         onCanPlay={() => setIsBuffering(false)}
         onLoadedMetadata={handleTimeUpdate}
-        onError={() => setIsBuffering(false)}
+        onError={handleAudioError}
         preload="auto"
       />
     </>

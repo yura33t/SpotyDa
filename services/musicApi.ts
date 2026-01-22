@@ -1,130 +1,166 @@
 
 import { Track } from "../types.ts";
 
-interface MusicProvider {
-  search: (query: string) => Promise<Track[]>;
-  getTrending: () => Promise<Track[]>;
+const SC_CLIENT_ID = "OelGkhXfXWOqCdtdJyDkt5rBWc2GF4xR";
+const SC_CLIENT_SECRET = "PjfZSquNGebF9LKetZ7FXaFd5xwo3KSv";
+const API_BASE = "https://api.soundcloud.com";
+
+let accessToken: string | null = null;
+let tokenExpiresAt: number = 0;
+
+/**
+ * Получает OAuth токен через поток Client Credentials.
+ * Это самый надежный способ авторизации для серверных и браузерных запросов.
+ */
+async function getAccessToken(): Promise<string> {
+  if (accessToken && Date.now() < tokenExpiresAt) {
+    return accessToken;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', SC_CLIENT_ID);
+    params.append('client_secret', SC_CLIENT_SECRET);
+
+    const response = await fetch(`${API_BASE}/oauth2/token`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: params
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("SoundCloud Auth Error Detail:", errorData);
+      throw new Error(`Auth failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    accessToken = data.access_token;
+    // Запас в 5 минут до истечения
+    tokenExpiresAt = Date.now() + (data.expires_in * 1000) - 300000;
+    console.log("SoundCloud Access Token renewed");
+    return accessToken!;
+  } catch (error) {
+    console.error("Critical SoundCloud Auth Failure:", error);
+    throw error;
+  }
 }
 
-class AudiusProvider implements MusicProvider {
-  // Базовый список проверенных узлов
-  private nodes = [
-    "https://audius-discovery-1.thenode.io",
-    "https://discovery-us-01.audius.openplayer.org",
-    "https://audius-metadata-1.pro-nodes.com",
-    "https://discovery-au-01.audius.openplayer.org",
-    "https://audius-discovery-1.nocturnallabs.org",
-    "https://discovery-uk-01.audius.openplayer.org"
-  ];
-  private cachedNode: string | null = null;
-  private isChecking = false;
+/**
+ * Преобразование данных из SoundCloud API в формат приложения.
+ */
+function mapSCTrack(item: any): Track {
+  const artwork = item.artwork_url || item.user?.avatar_url || "";
+  const hiResArtwork = artwork.replace("-large.jpg", "-t500x500.jpg");
+  
+  return {
+    id: `sc-${item.id}`,
+    title: item.title || "Без названия",
+    artist: item.user?.username || "Неизвестный исполнитель",
+    album: item.genre || "SoundCloud",
+    coverUrl: hiResArtwork || `https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500`,
+    audioUrl: item.stream_url || "",
+    duration: formatSCDuration(item.duration)
+  };
+}
 
-  private async getBestNode(): Promise<string> {
-    if (this.cachedNode) return this.cachedNode;
-    if (this.isChecking) return this.nodes[0];
-    
-    this.isChecking = true;
-    try {
-      // Пытаемся получить список актуальных узлов от официального API
-      const bootstrapResponse = await fetch("https://api.audius.co", { method: 'GET' }).catch(() => null);
-      if (bootstrapResponse && bootstrapResponse.ok) {
-        const { data } = await bootstrapResponse.json();
-        if (Array.isArray(data) && data.length > 0) {
-          this.nodes = [...new Set([...data, ...this.nodes])];
+function formatSCDuration(ms: number): string {
+  if (!ms) return "0:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Поиск музыки. Использует заголовок Authorization для предотвращения 401.
+ */
+export async function searchMusic(query: string): Promise<Track[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  try {
+    const token = await getAccessToken();
+    const response = await fetch(
+      `${API_BASE}/tracks?q=${encodeURIComponent(q)}&limit=30`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
         }
       }
+    );
 
-      // Проверяем первый работающий узел с коротким таймаутом
-      for (const node of this.nodes) {
-        try {
-          const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), 2000);
-          const res = await fetch(`${node}/v1/health_check`, { signal: controller.signal });
-          clearTimeout(id);
-          if (res.ok) {
-            this.cachedNode = node;
-            return node;
-          }
-        } catch (e) { continue; }
-      }
-    } catch (e) {
-      console.warn("Node discovery failed, using fallback");
-    } finally {
-      this.isChecking = false;
+    if (response.status === 401) {
+      accessToken = null; // Сбрасываем токен, если он вдруг протух
+      return searchMusic(query);
     }
-    
-    return this.nodes[0];
-  }
 
-  private ensureHttps(url: string): string {
-    if (!url) return url;
-    return url.replace(/^http:/, 'https:');
-  }
+    if (!response.ok) return [];
 
-  async search(query: string): Promise<Track[]> {
-    if (!query) return [];
-    try {
-      const node = await this.getBestNode();
-      const res = await fetch(`${node}/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=SPOTYDA_V2`);
-      if (!res.ok) throw new Error("Search request failed");
-      const { data } = await res.json();
-      return (data || []).map((item: any) => this.mapTrack(item, node));
-    } catch (error) {
-      console.error("Search failed:", error);
-      // Если узел упал, сбрасываем кеш и пробуем снова один раз
-      this.cachedNode = null;
-      return [];
-    }
-  }
-
-  async getTrending(): Promise<Track[]> {
-    try {
-      const node = await this.getBestNode();
-      // Получаем тренды. Используем более надежный эндпоинт trending
-      const res = await fetch(`${node}/v1/tracks/trending?limit=50&app_name=SPOTYDA_V2`);
-      if (!res.ok) throw new Error("Trending request failed");
-      const { data } = await res.json();
-      
-      if (!data || data.length === 0) {
-        // Если трендов нет, пробуем поиск по популярным тегам
-        return this.search("top hits 2024");
-      }
-
-      return data.map((item: any) => this.mapTrack(item, node));
-    } catch (error) {
-      console.error("Trending failed:", error);
-      this.cachedNode = null;
-      return [];
-    }
-  }
-
-  private mapTrack(item: any, node: string): Track {
-    // Формируем обложку. Если нет прямой, используем API эндпоинт
-    const coverUrl = item.artwork?.["480x480"] 
-      ? this.ensureHttps(item.artwork["480x480"])
-      : this.ensureHttps(`${node}/v1/tracks/${item.id}/artwork?size=480x480`);
-
-    return {
-      id: String(item.id),
-      title: item.title || "Untitled",
-      artist: item.user?.name || "Unknown Artist",
-      album: item.genre || "Music",
-      coverUrl: coverUrl,
-      audioUrl: this.ensureHttps(`${node}/v1/tracks/${item.id}/stream?app_name=SPOTYDA_V2`),
-      duration: this.formatDuration(item.duration)
-    };
-  }
-
-  private formatDuration(seconds: number): string {
-    if (!seconds) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const data = await response.json();
+    return (data.collection || data || [])
+      .filter((t: any) => t.streamable && t.stream_url)
+      .map((t: any) => mapSCTrack(t));
+  } catch (error) {
+    console.error("SoundCloud Search Error:", error);
+    return [];
   }
 }
 
-const provider: MusicProvider = new AudiusProvider();
+/**
+ * Рекомендации.
+ */
+export async function getRecommendations(): Promise<Track[]> {
+  try {
+    const token = await getAccessToken();
+    
+    // Используем популярные теги для получения списка треков
+    const tags = ['phonk', 'pop', 'hiphop', 'electronic'];
+    const tag = tags[Math.floor(Math.random() * tags.length)];
+    
+    const response = await fetch(
+      `${API_BASE}/tracks?tags=${tag}&limit=50&order=created_at`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      }
+    );
 
-export const searchMusic = (query: string) => provider.search(query);
-export const getRecommendations = () => provider.getTrending();
-export const findBestNode = async () => "ready";
+    if (response.status === 401) {
+      accessToken = null;
+      return getRecommendations();
+    }
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.collection || data || [])
+      .filter((t: any) => t.streamable && t.stream_url)
+      .map((t: any) => mapSCTrack(t));
+  } catch (error) {
+    console.error("SoundCloud Trending Error:", error);
+    return [];
+  }
+}
+
+/**
+ * Формирует ссылку для стриминга. 
+ * ВАЖНО: SoundCloud возвращает 302 Redirect на реальный медиа-файл.
+ */
+export async function getStreamUrl(track: Track): Promise<string> {
+  if (!track.audioUrl) return "";
+  
+  try {
+    const token = await getAccessToken();
+    // Мы возвращаем URL с токеном в параметрах, так как HTML5 Audio не умеет слать кастомные заголовки
+    const separator = track.audioUrl.includes('?') ? '&' : '?';
+    return `${track.audioUrl}${separator}oauth_token=${token}`;
+  } catch (error) {
+    return track.audioUrl;
+  }
+}

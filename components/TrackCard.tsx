@@ -26,7 +26,7 @@ const TrackCard: React.FC<TrackCardProps> = React.memo(({
   isInLibrary, 
   isActive, 
   viewMode = 'grid',
-  accentColor = '#1DB954',
+  accentColor = '#FF5500',
   isDarkMode
 }) => {
   

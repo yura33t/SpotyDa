@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AppSection } from '../types.ts';
 
@@ -11,7 +12,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ 
   currentSection, 
   setCurrentSection, 
-  accentColor = '#1DB954',
+  accentColor = '#FF5500',
   isDarkMode
 }) => {
   const items = [

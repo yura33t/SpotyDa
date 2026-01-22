@@ -53,7 +53,9 @@ const MainContent: React.FC<MainContentProps> = ({
   const [newTitle, setNewTitle] = useState('');
   const debounceTimer = useRef<number | null>(null);
 
-  const activeColor = accentColor || '#1DB954';
+  const activeColor = accentColor || '#FF5500';
+
+  const quickGenres = ["Phonk", "Lo-Fi", "Hip Hop", "Deep House", "Pop", "Rock", "Techno"];
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -64,16 +66,21 @@ const MainContent: React.FC<MainContentProps> = ({
   }, []);
 
   useEffect(() => {
-    if (currentSection === AppSection.SEARCH && searchInput.trim().length > 0) {
+    if (currentSection === AppSection.SEARCH && searchInput.trim().length >= 2) {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
       debounceTimer.current = window.setTimeout(() => {
         onSearch(searchInput);
-      }, 300);
+      }, 500);
     }
     return () => {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     };
   }, [searchInput, currentSection, onSearch]);
+
+  const handleClearSearch = () => {
+    setSearchInput('');
+    onSearch('');
+  };
 
   const renderTrackGrid = (tracks: Track[], title: string, showIndex = false) => (
     <div className="mb-8 md:mb-10 animate-fade">
@@ -162,39 +169,65 @@ const MainContent: React.FC<MainContentProps> = ({
 
         {currentSection === AppSection.SEARCH && (
           <div className="animate-fade">
-            <div className={`sticky top-0 z-20 py-2 md:py-3 backdrop-blur-md -mx-4 px-4 mb-6 ${isDarkMode ? 'bg-black/40' : 'bg-gray-50/60'}`}>
-               <div className="relative">
+            <div className={`sticky top-0 z-20 py-2 md:py-3 backdrop-blur-md -mx-4 px-4 mb-4 ${isDarkMode ? 'bg-black/40' : 'bg-gray-50/60'}`}>
+               <div className="relative group">
                   <input
                     type="text"
                     autoFocus
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Артисты или треки..."
-                    className={`w-full py-3 md:py-4 pl-11 md:pl-12 pr-4 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 transition-all shadow-xl ${isDarkMode ? 'bg-[#242424] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}
+                    placeholder="Треки, артисты или жанры..."
+                    className={`w-full py-3 md:py-4 pl-11 md:pl-12 pr-12 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 transition-all shadow-xl ${isDarkMode ? 'bg-[#242424] text-white' : 'bg-white text-gray-900 border border-gray-100'}`}
                     style={{ '--tw-ring-color': activeColor } as any}
                   />
-                  <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  
+                  {searchInput && (
+                    <button 
+                      onClick={handleClearSearch}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-white"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+
                   {isLoading && (
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                    <div className="absolute right-12 top-1/2 -translate-y-1/2">
                       <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: activeColor, borderTopColor: 'transparent' }}></div>
                     </div>
                   )}
                </div>
+               
+               <div className="flex items-center space-x-2 overflow-x-auto py-3 no-scrollbar">
+                  {quickGenres.map(genre => (
+                    <button
+                      key={genre}
+                      onClick={() => {
+                        setSearchInput(genre);
+                        onSearch(genre);
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all active:scale-95 ${isDarkMode ? 'bg-white/5 hover:bg-white/10 text-gray-300' : 'bg-black/5 hover:bg-black/10 text-gray-600'}`}
+                    >
+                      {genre}
+                    </button>
+                  ))}
+               </div>
             </div>
+
             {isLoading && searchResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24">
                   <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin mb-6" style={{ borderColor: activeColor, borderTopColor: 'transparent' }}></div>
-                  <p className="text-gray-400 font-bold animate-pulse">Ищем лучшие ритмы...</p>
+                  <p className="text-gray-400 font-bold animate-pulse text-sm">Нейросеть Gemini подбирает лучшее...</p>
                 </div>
             ) : searchResults.length > 0 ? (
-                renderTrackGrid(searchResults, "Результаты поиска", true)
+                renderTrackGrid(searchResults, "Найдено по запросу", true)
             ) : (
                 <div className="text-center py-20 md:py-24 px-4">
                   <div className={`w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner border transition-colors ${isDarkMode ? 'bg-[#1a1a1a] border-white/5' : 'bg-white border-gray-100'}`}>
                      <svg className="w-10 h-10 md:w-12 md:h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                   </div>
                   <p className={`text-xl md:text-2xl font-black mb-2 tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Слушай то, что любишь</p>
-                  <p className="text-gray-400 text-xs md:text-sm">Ищи любимых исполнителей или треки</p>
+                  <p className="text-gray-400 text-xs md:text-sm max-w-xs mx-auto">Ищи любимых исполнителей. Наша ИИ-поисковая система поймет тебя даже по описанию.</p>
                 </div>
             )}
           </div>
@@ -203,14 +236,14 @@ const MainContent: React.FC<MainContentProps> = ({
         {currentSection === AppSection.LIBRARY && (
            <div className="animate-fade">
              <div className="flex flex-col md:flex-row items-center md:items-end space-y-4 md:space-y-0 md:space-x-8 mb-8 md:mb-10 text-center md:text-left">
-               <div className="w-40 h-40 md:w-64 md:h-64 bg-gradient-to-br from-[#450af5] to-[#c4efd9] shadow-2xl rounded-2xl md:rounded-lg flex items-center justify-center">
+               <div className="w-40 h-40 md:w-64 md:h-64 bg-gradient-to-br from-[#FF5500] to-[#FFCC00] shadow-2xl rounded-2xl md:rounded-lg flex items-center justify-center">
                  <svg className="w-20 h-20 md:w-24 md:h-24 text-white drop-shadow-2xl" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                </div>
                <div className="flex-1">
                  <p className="text-[10px] md:text-xs font-bold uppercase tracking-widest mb-2" style={{ color: activeColor }}>Плейлист</p>
                  <h1 className={`text-3xl md:text-8xl font-black tracking-tighter mb-4 md:mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Любимое</h1>
                  <div className="flex items-center justify-center md:justify-start space-x-2 text-xs font-bold text-gray-300">
-                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] text-black font-black" style={{ backgroundColor: activeColor }}>SD</div>
+                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] text-white font-black" style={{ backgroundColor: activeColor }}>SD</div>
                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>SpotyDa User</span>
                    <span className="text-gray-500">•</span>
                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>{libraryTracks.length} треков</span>
@@ -294,7 +327,7 @@ const MainContent: React.FC<MainContentProps> = ({
 
                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
                     <div className="flex items-center space-x-2 text-xs font-bold">
-                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] text-black font-black" style={{ backgroundColor: activeColor }}>SD</div>
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] text-white font-black" style={{ backgroundColor: activeColor }}>SD</div>
                         <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>SpotyDa User • {selectedPlaylist.tracks.length} треков</span>
                     </div>
                     <button 

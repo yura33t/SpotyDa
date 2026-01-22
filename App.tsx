@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainContent from './components/MainContent.tsx';
 import Player from './components/Player.tsx';
@@ -8,7 +8,7 @@ import SettingsModal from './components/SettingsModal.tsx';
 import PlaylistModal from './components/PlaylistModal.tsx';
 import { AppSection, Track, Playlist } from './types.ts';
 import { getRecommendations, searchMusic } from './services/musicApi.ts';
-import { getSmartSearchQuery, analyzeWallpaper, enhanceWallpaper, WallpaperAnalysis } from './services/gemini.ts';
+import { getSmartSearchQuery, analyzeWallpaper, enhanceWallpaper, WallpaperAnalysis, getGroundedRecommendations } from './services/gemini.ts';
 
 const storage = {
   get: (key: string) => {
@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshingRecs, setIsRefreshingRecs] = useState(false);
+  const [isAISearching, setIsAISearching] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(storage.get('spotyda_theme_dark') ?? true);
   
@@ -49,6 +50,8 @@ const App: React.FC = () => {
   const [bgAnalysis, setBgAnalysis] = useState<WallpaperAnalysis | null>(storage.get('spotyda_bg_analysis'));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  const lastSearchQuery = useRef<string>('');
+
   const toggleTheme = () => {
     const newVal = !isDarkMode;
     setIsDarkMode(newVal);
@@ -58,14 +61,34 @@ const App: React.FC = () => {
   const fetchRecommendations = useCallback(async () => {
     if (isRefreshingRecs) return;
     setIsRefreshingRecs(true);
+    
     try {
-      const recs = await getRecommendations();
-      if (recs && recs.length > 0) {
-        setRecommendations(recs);
-        storage.set('spotyda_recs', recs);
+      const trending = await getRecommendations();
+      if (trending && trending.length > 0) {
+        setRecommendations(trending);
+        storage.set('spotyda_recs', trending);
       }
+      
+      // ИИ-идеи подгружаем в фоне для следующего раза
+      getGroundedRecommendations().then(async (aiIdeas) => {
+          if (aiIdeas.length > 0) {
+              const searches = aiIdeas.slice(0, 4).map(idea => searchMusic(`${idea.artist} ${idea.title}`));
+              const results = await Promise.allSettled(searches);
+              const extraTracks = results
+                .filter(r => r.status === 'fulfilled' && r.value.length > 0)
+                .map(r => (r as PromiseFulfilledResult<Track[]>).value[0]);
+              
+              if (extraTracks.length > 0) {
+                  setRecommendations(prev => {
+                      const combined = [...extraTracks, ...prev];
+                      return Array.from(new Map(combined.map(t => [t.id, t])).values()).slice(0, 60);
+                  });
+              }
+          }
+      });
+
     } catch (err) {
-      console.warn("Failed to load recs", err);
+      console.error("Recommendations error", err);
     } finally {
       setIsRefreshingRecs(false);
     }
@@ -84,18 +107,43 @@ const App: React.FC = () => {
   }, []);
 
   const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) return;
+    const q = query.trim();
+    if (!q) {
+      setSearchResults([]);
+      lastSearchQuery.current = '';
+      return;
+    }
+    
+    if (q === lastSearchQuery.current) return;
+    lastSearchQuery.current = q;
+
     setIsLoading(true);
     setCurrentSection(AppSection.SEARCH);
+    
     try {
-      // Пытаемся оптимизировать запрос, но если Gemini тупит - используем оригинал через 2сек
-      const optimized = await getSmartSearchQuery(query);
-      const results = await searchMusic(optimized);
-      setSearchResults(results);
+      // 1. Мгновенный поиск (MusicBrainz + Audius уже оптимизированы в сервисе)
+      const tracks = await searchMusic(q);
+      setSearchResults(tracks);
+
+      // 2. Если результатов мало - просим Gemini уточнить запрос
+      if (tracks.length < 3 && q.length > 5) {
+        setIsAISearching(true);
+        const smartQuery = await getSmartSearchQuery(q);
+        if (smartQuery !== q) {
+            const aiTracks = await searchMusic(smartQuery);
+            if (aiTracks.length > 0) {
+                setSearchResults(prev => {
+                    const combined = [...prev, ...aiTracks];
+                    return Array.from(new Map(combined.map(t => [t.id, t])).values());
+                });
+            }
+        }
+      }
     } catch (err) {
-      console.error("Search handle error:", err);
+      console.error("Search error:", err);
     } finally {
       setIsLoading(false);
+      setIsAISearching(false);
     }
   }, []);
 
@@ -137,7 +185,7 @@ const App: React.FC = () => {
   const createPlaylist = () => {
     const newPlaylist: Playlist = {
       id: Date.now().toString(),
-      title: `Мой плейлист #${playlists.length + 1}`,
+      title: `Плейлист #${playlists.length + 1}`,
       tracks: [],
       createdAt: Date.now()
     };
@@ -193,40 +241,6 @@ const App: React.FC = () => {
     setIsPlaylistModalOpen(true);
   };
 
-  const optimizeImage = (base64: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const TARGET_WIDTH = 1280; // Снижаем разрешение для скорости анализа
-        const TARGET_HEIGHT = 720;
-        let width = img.width;
-        let height = img.height;
-        const aspectRatio = width / height;
-        if (width > TARGET_WIDTH || height > TARGET_HEIGHT) {
-          if (aspectRatio > (TARGET_WIDTH / TARGET_HEIGHT)) {
-            width = TARGET_WIDTH;
-            height = TARGET_WIDTH / aspectRatio;
-          } else {
-            height = TARGET_HEIGHT;
-            width = TARGET_HEIGHT * aspectRatio;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
-        } else {
-          resolve(base64);
-        }
-      };
-    });
-  };
-
   const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -241,22 +255,24 @@ const App: React.FC = () => {
           setBgAnalysis(null);
           storage.set('spotyda_bg', base64);
           storage.set('spotyda_bg_type', 'video');
-          storage.set('spotyda_bg_analysis', null);
           setIsAnalyzing(false);
         } else {
           try {
-            const initialOptimized = await optimizeImage(base64);
-            const enhanced = await enhanceWallpaper(initialOptimized);
-            const finalOptimized = await optimizeImage(enhanced);
-            const analysis = await analyzeWallpaper(finalOptimized);
-            setCustomBg(finalOptimized);
+            const analysis = await analyzeWallpaper(base64);
+            setCustomBg(base64);
             setBgType('image');
             setBgAnalysis(analysis);
-            storage.set('spotyda_bg', finalOptimized);
+            storage.set('spotyda_bg', base64);
             storage.set('spotyda_bg_type', 'image');
             storage.set('spotyda_bg_analysis', analysis);
+            
+            // Улучшаем в фоне
+            enhanceWallpaper(base64).then(enhanced => {
+                setCustomBg(enhanced);
+                storage.set('spotyda_bg', enhanced);
+            });
           } catch (err) {
-            console.error("BG process error", err);
+            console.error("BG error", err);
           } finally {
             setIsAnalyzing(false);
           }
@@ -284,27 +300,26 @@ const App: React.FC = () => {
             <video 
               src={customBg} 
               autoPlay loop muted playsInline
-              className={`w-full h-full object-cover ${isDarkMode ? 'opacity-70' : 'opacity-40'}`}
+              className={`w-full h-full object-cover ${isDarkMode ? 'opacity-60' : 'opacity-30'}`}
             />
           ) : (
             <div 
               className="absolute inset-0 bg-cover transition-all duration-1000 ease-in-out" 
               style={{ 
                 backgroundImage: `url(${customBg})`,
-                filter: bgAnalysis?.filters || (isDarkMode ? 'brightness(0.5)' : 'brightness(0.8)'),
+                filter: bgAnalysis?.filters || (isDarkMode ? 'brightness(0.4)' : 'brightness(0.8)'),
                 backgroundPosition: bgAnalysis ? `${bgAnalysis.focalPoint.x}% ${bgAnalysis.focalPoint.y}%` : 'center',
                 backgroundSize: 'cover'
               }}
             />
           )}
-          <div className={`absolute inset-0 z-0 ${isDarkMode ? 'bg-black/20' : 'bg-white/10'}`} />
+          <div className={`absolute inset-0 z-0 ${isDarkMode ? 'bg-black/30' : 'bg-white/10'}`} />
         </div>
       )}
       
-      {isAnalyzing && (
-        <div className="fixed top-6 right-6 z-[200] flex items-center bg-white text-black px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-tighter shadow-2xl animate-pulse">
-          <div className="w-2 h-2 bg-[#1DB954] rounded-full mr-2"></div>
-          Gemini AI Enhancing...
+      {(isAnalyzing || isAISearching) && (
+        <div className="fixed top-6 right-6 z-[250] flex items-center bg-[#FF5500] text-white px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-tighter shadow-2xl animate-bounce">
+          AI Turbo Active
         </div>
       )}
 
@@ -322,7 +337,7 @@ const App: React.FC = () => {
           setSelectedPlaylistId={setSelectedPlaylistId}
           onCreatePlaylist={createPlaylist}
         />
-        <main className={`flex-1 overflow-y-auto relative ${customBg ? 'bg-transparent' : isDarkMode ? 'bg-gradient-to-b from-[#121212] to-black' : 'bg-gradient-to-b from-white to-gray-100'}`}>
+        <main className={`flex-1 overflow-y-auto relative custom-scrollbar ${customBg ? 'bg-transparent' : isDarkMode ? 'bg-gradient-to-b from-[#121212] to-black' : 'bg-gradient-to-b from-white to-gray-100'}`}>
           <div className="md:hidden absolute top-4 right-4 z-[50]">
             <button 
               onClick={() => setIsSettingsOpen(true)}
@@ -342,11 +357,11 @@ const App: React.FC = () => {
             toggleLibrary={toggleLibrary}
             onSearch={handleSearch}
             onPlayTrack={handlePlayTrack}
-            isLoading={isLoading || isRefreshingRecs}
+            isLoading={isLoading}
             onRefreshRecs={fetchRecommendations}
             isRefreshingRecs={isRefreshingRecs}
             currentTrackId={currentTrack?.id}
-            accentColor={bgAnalysis?.themeColor}
+            accentColor={bgAnalysis?.themeColor || '#FF5500'}
             isDarkMode={isDarkMode}
             selectedPlaylist={selectedPlaylist}
             onRenamePlaylist={renamePlaylist}
@@ -374,7 +389,7 @@ const App: React.FC = () => {
       <BottomNav 
         currentSection={currentSection} 
         setCurrentSection={setCurrentSection} 
-        accentColor={bgAnalysis?.themeColor}
+        accentColor={bgAnalysis?.themeColor || '#FF5500'}
         isDarkMode={isDarkMode}
       />
 
